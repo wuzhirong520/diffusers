@@ -551,7 +551,11 @@ def log_validation(
 
     pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config, **scheduler_args)
     pipe = pipe.to(accelerator.device)
-    # pipe.set_progress_bar_config(disable=True)
+    pipe.set_progress_bar_config(disable=True)
+    # pipe.enable_model_cpu_offload()
+    # pipe.enable_sequential_cpu_offload()
+    # pipe.vae.enable_tiling()
+    # pipe.vae.enable_slicing()
 
     # run inference
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
@@ -878,6 +882,7 @@ def main(args):
         torch_dtype=load_dtype,
         revision=args.revision,
         variant=args.variant,
+        in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
     )
 
     vae = AutoencoderKLCogVideoX.from_pretrained(
@@ -1323,6 +1328,7 @@ def main(args):
                 break
 
         if accelerator.is_main_process:
+            # if args.validation_prompt is not None and (epoch + 1) % args.validation_epochs == 0:
             if args.validation_prompt is not None and (epoch + 1) % args.validation_epochs == 0:
                 # Create pipeline
                 pipe = CogVideoXImageToVideoPipeline.from_pretrained(
@@ -1332,6 +1338,9 @@ def main(args):
                     revision=args.revision,
                     variant=args.variant,
                     torch_dtype=weight_dtype,
+
+                    vae = vae,
+                    text_encoder=text_encoder
                 )
 
                 validation_prompts = args.validation_prompt.split(args.validation_prompt_separator)
@@ -1345,6 +1354,7 @@ def main(args):
                         "use_dynamic_cfg": args.use_dynamic_cfg,
                         "height": args.height,
                         "width": args.width,
+                        "num_frames": args.max_num_frames
                     }
 
                     validation_outputs = log_validation(
@@ -1384,6 +1394,8 @@ def main(args):
             revision=args.revision,
             variant=args.variant,
             torch_dtype=weight_dtype,
+            vae = vae,
+            text_encoder=text_encoder
         )
         pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config,)
 
@@ -1411,6 +1423,7 @@ def main(args):
                     "use_dynamic_cfg": args.use_dynamic_cfg,
                     "height": args.height,
                     "width": args.width,
+                    "num_frames": args.max_num_frames
                 }
 
                 video = log_validation(

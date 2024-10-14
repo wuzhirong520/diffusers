@@ -37,8 +37,7 @@ class NuscenesDatasetForCogvidx(Dataset):
         max_num_frames: int = 9, # must be (4k+1)
         split: str = "train",
         encode_prompt = None,
-        encode_video = None,
-        max_samples = 10
+        encode_video = None
     ) -> None:
         super().__init__()
         self.data_root = data_root
@@ -57,8 +56,6 @@ class NuscenesDatasetForCogvidx(Dataset):
         self.samples_groups = self.group_sample_by_scene(split)
         
         self.scenes = list(self.samples_groups.keys())
-
-        self.scenes = self.scenes[:max_samples]
         
         self.frames_group = {} # (scene, image_paths)
         
@@ -71,9 +68,6 @@ class NuscenesDatasetForCogvidx(Dataset):
         json_path = f'{data_root}/nusc_video_{split}_8_ov-7b_dict.json'
         with open(json_path, 'r') as f:
             self.annotations = json.load(f)
-        
-        self.preload()
-
     
     def __len__(self):
         return len(self.scenes)
@@ -113,18 +107,9 @@ class NuscenesDatasetForCogvidx(Dataset):
         paths.sort()
         return paths
     
-    def preload(self):
-        self.instance_prompts = []
-        self.instance_videos =[]
-
-        progress_dataset_bar = tqdm(
-            range(0, len(self.scenes)),
-            desc="Loading prompts and videos",
-        )
-
-        for index in range(len(self.scenes)):
-            progress_dataset_bar.update(1)
-
+    def __getitem__(self, index):
+        try:
+            # index: scene idx
             my_scene = self.scenes[index]
             all_frames = self.frames_group[my_scene]
             
@@ -166,16 +151,20 @@ class NuscenesDatasetForCogvidx(Dataset):
             prompt = self.encode_prompt(driving_prompt)
             video = self.encode_video(frames)
 
-            self.instance_prompts.append(prompt)
-            self.instance_videos.append(video)
-        
-    def __getitem__(self, index):
-        return {
-            "instance_prompt": self.instance_prompts[index],
-            "instance_video": self.instance_videos[index],
-        }
+            return {
+                "instance_prompt": prompt,
+                "instance_video": video,
+            }
+            
+        except Exception as e:
+            print('Bad idx %s skipped because of %s' % (index, e))
+            return self.__getitem__(np.random.randint(0, self.__len__() - 1))
 
 if __name__ == "__main__":
-    train_dataset = NuscenesDatasetForCogvidx()
-    for i in tqdm(range(len(train_dataset))):
-        train_dataset[i]
+    train_dataset = NuscenesDatasetForCogvidx(data_root="/root/autodl-fs/Nuscenes-v1.0-trainval-CAM_FRONT",split="train")
+    scene = train_dataset.scenes[0]
+    print(scene)
+    os.makedirs(scene,exist_ok=True)
+    frames = train_dataset.get_paths_from_scene(scene)
+    for i,path in enumerate(frames):
+        os.system(f"cp {path} ./{scene}/{i}.jpg")

@@ -1,6 +1,7 @@
 export HF_ENDPOINT='https://hf-mirror.com'
-export HF_HOME="/root/autodl-fs/cache/huggingface/"
-export HUGGINGFACE_HUB_CACHE="/root/autodl-fs/cache/huggingface/hub"
+export HF_HOME="/root/autodl-fs/huggingface/"
+export HUGGINGFACE_HUB_CACHE="/root/autodl-fs/huggingface/hub"
+export TOKENIZERS_PARALLELISM=false
 
 export MODEL_PATH="THUDM/CogVideoX-2b"
 export DATASET_PATH="/root/autodl-fs/Nuscenes-v1.0-trainval-CAM_FRONT"
@@ -14,12 +15,11 @@ accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gp
   --enable_tiling \
   --enable_slicing \
   --instance_data_root $DATASET_PATH \
-  --caption_column prompts.txt \
-  --video_column videos.txt \
-  --validation_prompt "DISNEY A black and white animated scene unfolds with an anthropomorphic goat surrounded by musical notes and symbols, suggesting a playful environment. Mickey Mouse appears, leaning forward in curiosity as the goat remains still. The goat then engages with Mickey, who bends down to converse or react. The dynamics shift as Mickey grabs the goat, potentially in surprise or playfulness, amidst a minimalistic background. The scene captures the evolving relationship between the two characters in a whimsical, animated setting, emphasizing their interactions and emotions:::A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical atmosphere of this unique musical performance" \
+  --validation_prompt "The ego car is moving forward slowly, approaching the barrier gate." \
+  --validation_images "/root/PKU/diffusers/wzr_example/Nuscenes/val/scene-0003/0.jpg" \
   --validation_prompt_separator ::: \
   --num_validation_videos 1 \
-  --validation_epochs 100 \
+  --validation_epochs 2 \
   --seed 42 \
   --rank 128 \
   --lora_alpha 64 \
@@ -32,15 +32,13 @@ accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gp
   --skip_frames_start 0 \
   --skip_frames_end 0 \
   --train_batch_size 1 \
-  --num_train_epochs 30 \
-  --checkpointing_steps 1000 \
+  --num_train_epochs 4 \
+  --checkpointing_steps 10 \
   --gradient_accumulation_steps 1 \
   --learning_rate 1e-3 \
   --lr_scheduler cosine_with_restarts \
   --lr_warmup_steps 200 \
   --lr_num_cycles 1 \
-  --enable_slicing \
-  --enable_tiling \
   --gradient_checkpointing \
   --optimizer AdamW \
   --adam_beta1 0.9 \
