@@ -10,10 +10,14 @@
             "request": "launch",
             "program": "/root/PKU/diffusers/wzr_example/Nuscenes/train.py",
             "console": "integratedTerminal",
+            "env": {
+                "HF_ENDPOINT":"https://hf-mirror.com",
+                "HF_HOME":"/root/autodl-fs/cache/huggingface/",
+                "HUGGINGFACE_HUB_CACHE":"/root/autodl-fs/cache/huggingface/hub"
+            },
             "args": [
                 "--gradient_checkpointing",
                 "--pretrained_model_name_or_path", "THUDM/CogVideoX-2b",
-                "--cache_dir" ,"/root/autodl-fs/cache",
                 "--enable_tiling" ,
                 "--enable_slicing", 
                 "--instance_data_root", "/root/autodl-fs/Nuscenes-v1.0-trainval-CAM_FRONT",

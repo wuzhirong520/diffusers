@@ -1,16 +1,16 @@
 export HF_ENDPOINT='https://hf-mirror.com'
+export HF_HOME="/root/autodl-fs/cache/huggingface/"
+export HUGGINGFACE_HUB_CACHE="/root/autodl-fs/cache/huggingface/hub"
 
 export MODEL_PATH="THUDM/CogVideoX-2b"
-export CACHE_PATH="/root/autodl-fs/cache"
 export DATASET_PATH="/root/autodl-fs/Nuscenes-v1.0-trainval-CAM_FRONT"
 export OUTPUT_PATH="/root/autodl-tmp/cogvideox-lora-single-node_test"
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=0,1
 
 accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gpu \
   train.py \
   --gradient_checkpointing \
   --pretrained_model_name_or_path $MODEL_PATH \
-  --cache_dir $CACHE_PATH \
   --enable_tiling \
   --enable_slicing \
   --instance_data_root $DATASET_PATH \
@@ -23,7 +23,7 @@ accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gp
   --seed 42 \
   --rank 128 \
   --lora_alpha 64 \
-  --mixed_precision bf16 \
+  --mixed_precision fp16 \
   --output_dir $OUTPUT_PATH \
   --height 480 \
   --width 720 \

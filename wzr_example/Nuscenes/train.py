@@ -862,11 +862,11 @@ def main(args):
 
     # Prepare models and scheduler
     tokenizer = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, cache_dir=args.cache_dir
+        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, 
     )
 
     text_encoder = T5EncoderModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, cache_dir=args.cache_dir
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, 
     )
 
     # CogVideoX-2b weights are stored in float16
@@ -878,14 +878,13 @@ def main(args):
         torch_dtype=load_dtype,
         revision=args.revision,
         variant=args.variant,
-        cache_dir=args.cache_dir
     )
 
     vae = AutoencoderKLCogVideoX.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant, cache_dir=args.cache_dir
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant, 
     )
 
-    scheduler = CogVideoXDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler", cache_dir=args.cache_dir)
+    scheduler = CogVideoXDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler",)
 
     if args.enable_slicing:
         vae.enable_slicing()
@@ -1333,7 +1332,6 @@ def main(args):
                     revision=args.revision,
                     variant=args.variant,
                     torch_dtype=weight_dtype,
-                    cache_dir=args.cache_dir
                 )
 
                 validation_prompts = args.validation_prompt.split(args.validation_prompt_separator)
@@ -1386,9 +1384,8 @@ def main(args):
             revision=args.revision,
             variant=args.variant,
             torch_dtype=weight_dtype,
-            cache_dir=args.cache_dir
         )
-        pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config, cache_dir=args.cache_dir)
+        pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config,)
 
         if args.enable_slicing:
             pipe.vae.enable_slicing()
