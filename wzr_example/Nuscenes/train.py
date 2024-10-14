@@ -35,7 +35,7 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, T5EncoderModel, T5Tokenizer
 
 import sys
-sys.path.append("/home/wuzhirong/PKU_new/diffusers/src")
+sys.path.append("/root/PKU/diffusers/src")
 import diffusers
 from diffusers import (
     AutoencoderKLCogVideoX,
@@ -862,11 +862,11 @@ def main(args):
 
     # Prepare models and scheduler
     tokenizer = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, cache_dir=args.cache_dir
     )
 
     text_encoder = T5EncoderModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, cache_dir=args.cache_dir
     )
 
     # CogVideoX-2b weights are stored in float16
@@ -878,13 +878,14 @@ def main(args):
         torch_dtype=load_dtype,
         revision=args.revision,
         variant=args.variant,
+        cache_dir=args.cache_dir
     )
 
     vae = AutoencoderKLCogVideoX.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant, cache_dir=args.cache_dir
     )
 
-    scheduler = CogVideoXDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    scheduler = CogVideoXDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler", cache_dir=args.cache_dir)
 
     if args.enable_slicing:
         vae.enable_slicing()
@@ -1032,16 +1033,7 @@ def main(args):
 
     optimizer = get_optimizer(args, params_to_optimize, use_deepspeed=use_deepspeed_optimizer)
 
-    # Dataset and DataLoader
-    train_dataset = NuscenesDatasetForCogvidx(
-        data_root=args.instance_data_root,
-        height=args.height,
-        width=args.width,
-        max_num_frames=args.max_num_frames,
-    )
-
-    def encode_video(video, bar):
-        bar.update(1)
+    def encode_video(video):
         video = video.to(accelerator.device, dtype=vae.dtype).unsqueeze(0)
         video = video.permute(0, 2, 1, 3, 4)  # [B, C, F, H, W]
         image = video[:, :, :1].clone()
@@ -1054,9 +1046,9 @@ def main(args):
         image_latent_dist = vae.encode(noisy_image).latent_dist
 
         return latent_dist, image_latent_dist
-
-    train_dataset.instance_prompts = [
-        compute_prompt_embeddings(
+    
+    def encode_prompt(prompt):
+        return compute_prompt_embeddings(
             tokenizer,
             text_encoder,
             [prompt],
@@ -1065,15 +1057,17 @@ def main(args):
             weight_dtype,
             requires_grad=False,
         )
-        for prompt in train_dataset.instance_prompts
-    ]
-
-    progress_encode_bar = tqdm(
-        range(0, len(train_dataset.instance_videos)),
-        desc="Loading Encode videos",
+    
+    # Dataset and DataLoader
+    train_dataset = NuscenesDatasetForCogvidx(
+        data_root=args.instance_data_root,
+        height=args.height,
+        width=args.width,
+        max_num_frames=args.max_num_frames,
+        encode_video=encode_video,
+        encode_prompt=encode_prompt
     )
-    train_dataset.instance_videos = [encode_video(video, progress_encode_bar) for video in train_dataset.instance_videos]
-    progress_encode_bar.close()
+
 
     def collate_fn(examples):
         videos = []
@@ -1339,6 +1333,7 @@ def main(args):
                     revision=args.revision,
                     variant=args.variant,
                     torch_dtype=weight_dtype,
+                    cache_dir=args.cache_dir
                 )
 
                 validation_prompts = args.validation_prompt.split(args.validation_prompt_separator)
@@ -1391,8 +1386,9 @@ def main(args):
             revision=args.revision,
             variant=args.variant,
             torch_dtype=weight_dtype,
+            cache_dir=args.cache_dir
         )
-        pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config)
+        pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config, cache_dir=args.cache_dir)
 
         if args.enable_slicing:
             pipe.vae.enable_slicing()

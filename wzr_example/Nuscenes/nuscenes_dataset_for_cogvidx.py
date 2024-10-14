@@ -35,7 +35,9 @@ class NuscenesDatasetForCogvidx(Dataset):
         height: int = 480,
         width: int = 720,
         max_num_frames: int = 9, # must be (4k+1)
-        split: str = "train"
+        split: str = "train",
+        encode_prompt = None,
+        encode_video = None
     ) -> None:
         super().__init__()
         self.data_root = data_root
@@ -43,6 +45,8 @@ class NuscenesDatasetForCogvidx(Dataset):
         self.width = width
         self.max_num_frames = max_num_frames
         self.split = split
+        self.encode_prompt=encode_prompt
+        self.encode_video=encode_video
 
         self.nusc = NuScenes(version='v1.0-trainval', dataroot=self.data_root, verbose=True)
 
@@ -144,9 +148,12 @@ class NuscenesDatasetForCogvidx(Dataset):
             frames = frames.permute(0, 3, 1, 2) # [F, C, H, W]
             frames = resize(frames,size=[self.height, self.width],interpolation=InterpolationMode.BICUBIC)
 
+            prompt = self.encode_prompt(driving_prompt)
+            video = self.encode_video(frames)
+
             return {
-                "instance_prompt": driving_prompt,
-                "instance_video": frames,
+                "instance_prompt": prompt,
+                "instance_video": video,
             }
             
         except Exception as e:

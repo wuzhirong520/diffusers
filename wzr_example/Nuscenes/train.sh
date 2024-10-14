@@ -1,12 +1,11 @@
 export HF_ENDPOINT='https://hf-mirror.com'
+
 export MODEL_PATH="THUDM/CogVideoX-2b"
-export CACHE_PATH="~/.cache"
-export DATASET_PATH="/home/wuzhirong/PKU_new/Nuscenes-v1.0-trainval-CAM_FRONT"
-export OUTPUT_PATH="cogvideox-lora-single-node"
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export CACHE_PATH="/root/autodl-fs/cache"
+export DATASET_PATH="/root/autodl-fs/Nuscenes-v1.0-trainval-CAM_FRONT"
+export OUTPUT_PATH="/root/autodl-tmp/cogvideox-lora-single-node_test"
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 
-# if you are not using wth 8 gus, change `accelerate_config_machine_single.yaml` num_processes as your gpu number
 accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gpu \
   train.py \
   --gradient_checkpointing \

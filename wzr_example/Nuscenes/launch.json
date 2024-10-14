@@ -1,0 +1,49 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File with Arguments",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/root/PKU/diffusers/wzr_example/Nuscenes/train.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--gradient_checkpointing",
+                "--pretrained_model_name_or_path", "THUDM/CogVideoX-2b",
+                "--cache_dir" ,"/root/autodl-fs/cache",
+                "--enable_tiling" ,
+                "--enable_slicing", 
+                "--instance_data_root", "/root/autodl-fs/Nuscenes-v1.0-trainval-CAM_FRONT",
+                "--num_validation_videos", "1" ,
+                "--validation_epochs", "100" ,
+                "--seed", "42" ,
+                "--rank", "128" ,
+                "--lora_alpha", "64" ,
+                "--mixed_precision", "fp16" ,
+                "--output_dir", "/root/autodl-tmp/cogvideox-lora-single-node_test",
+                "--height", "480" ,
+                "--width", "720" ,
+                "--fps", "8" ,
+                "--max_num_frames", "9" ,
+                "--train_batch_size", "1" ,
+                "--num_train_epochs", "30" ,
+                "--checkpointing_steps", "1000" ,
+                "--gradient_accumulation_steps", "1" ,
+                "--learning_rate", "1e-3" ,
+                "--lr_scheduler", "cosine_with_restarts" ,
+                "--lr_warmup_steps", "200" ,
+                "--lr_num_cycles", "1" ,
+                "--gradient_checkpointing" ,
+                "--optimizer", "AdamW" ,
+                "--adam_beta1", "0.9" ,
+                "--adam_beta2", "0.95" ,
+                "--max_grad_norm", "1.0",
+                "--allow_tf32",
+                "--report_to","wandb"
+            ]
+        }
+    ]
+}
