@@ -38,7 +38,7 @@ class NuscenesDatasetForCogvidx(Dataset):
         split: str = "train",
         encode_prompt = None,
         encode_video = None,
-        max_samples = 10
+        max_samples = 100
     ) -> None:
         super().__init__()
         self.data_root = data_root

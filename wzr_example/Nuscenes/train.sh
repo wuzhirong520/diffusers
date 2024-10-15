@@ -19,7 +19,7 @@ accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gp
   --validation_images "/root/PKU/diffusers/wzr_example/Nuscenes/val/scene-0003/0.jpg" \
   --validation_prompt_separator ::: \
   --num_validation_videos 1 \
-  --validation_epochs 2 \
+  --validation_epochs 1 \
   --seed 42 \
   --rank 128 \
   --lora_alpha 64 \
@@ -28,11 +28,11 @@ accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gp
   --height 480 \
   --width 720 \
   --fps 8 \
-  --max_num_frames 9 \
+  --max_num_frames 33 \
   --skip_frames_start 0 \
   --skip_frames_end 0 \
   --train_batch_size 1 \
-  --num_train_epochs 4 \
+  --num_train_epochs 10 \
   --checkpointing_steps 10 \
   --gradient_accumulation_steps 1 \
   --learning_rate 1e-3 \

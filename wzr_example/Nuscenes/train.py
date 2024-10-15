@@ -551,7 +551,7 @@ def log_validation(
 
     pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config, **scheduler_args)
     pipe = pipe.to(accelerator.device)
-    pipe.set_progress_bar_config(disable=True)
+    # pipe.set_progress_bar_config(disable=True)
     # pipe.enable_model_cpu_offload()
     # pipe.enable_sequential_cpu_offload()
     # pipe.vae.enable_tiling()
@@ -583,7 +583,7 @@ def log_validation(
                     .replace('"', "_")
                     .replace("/", "_")
                 )
-                filename = os.path.join(args.output_dir, f"{phase_name}_video_{i}_{prompt}.mp4")
+                filename = os.path.join(args.output_dir, f"{phase_name}_video_{epoch}_{i}_{prompt}.mp4")
                 export_to_video(video, filename, fps=8)
                 video_filenames.append(filename)
 
@@ -877,12 +877,13 @@ def main(args):
     # CogVideoX-5b and CogVideoX-5b-I2V weights are stored in bfloat16
     load_dtype = torch.bfloat16 if "5b" in args.pretrained_model_name_or_path.lower() else torch.float16
     transformer = CogVideoXTransformer3DModel.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="transformer",
+        # args.pretrained_model_name_or_path,
+        # subfolder="transformer",
+        "/root/autodl-fs/CogVidx-2b-I2V-base-transfomer",
         torch_dtype=load_dtype,
         revision=args.revision,
         variant=args.variant,
-        in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
+        # in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
     )
 
     vae = AutoencoderKLCogVideoX.from_pretrained(
@@ -1388,6 +1389,16 @@ def main(args):
         del transformer
         free_memory()
 
+        transformer_ = CogVideoXTransformer3DModel.from_pretrained(
+            # args.pretrained_model_name_or_path,
+            # subfolder="transformer",
+            "/root/autodl-fs/CogVidx-2b-I2V-base-transfomer",
+            torch_dtype=load_dtype,
+            revision=args.revision,
+            variant=args.variant,
+            # in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
+        )
+
         # Final test inference
         pipe = CogVideoXImageToVideoPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
@@ -1395,8 +1406,10 @@ def main(args):
             variant=args.variant,
             torch_dtype=weight_dtype,
             vae = vae,
-            text_encoder=text_encoder
+            text_encoder=text_encoder,
+            transformer = transformer_
         )
+        pipe.enable_model_cpu_offload()
         pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config,)
 
         if args.enable_slicing:
