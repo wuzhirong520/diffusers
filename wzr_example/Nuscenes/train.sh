@@ -5,8 +5,13 @@ export TOKENIZERS_PARALLELISM=false
 
 export MODEL_PATH="THUDM/CogVideoX-2b"
 export DATASET_PATH="/root/autodl-fs/Nuscenes-v1.0-trainval-CAM_FRONT"
-export OUTPUT_PATH="/root/autodl-tmp/cogvideox-lora-single-node_test"
+export OUTPUT_PATH="/root/autodl-tmp/cogvideox-lora-single-node_test_full"
 export CUDA_VISIBLE_DEVICES=0,1
+
+  # --resume_from_checkpoint "/root/autodl-tmp/cogvideox-lora-single-node_test_from2000/checkpoint-2000" \
+
+  # --validation_prompt "The ego car speeds up, then slows down as it approaches a red traffic light. It stops at the traffic light, waits for it to turn green, and then continues driving forward." \
+  # --validation_images "/root/PKU/diffusers/wzr_example/Nuscenes/val/scene-0001/0.jpg" \
 
 accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gpu \
   train.py \
@@ -32,8 +37,8 @@ accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gp
   --skip_frames_start 0 \
   --skip_frames_end 0 \
   --train_batch_size 1 \
-  --num_train_epochs 10 \
-  --checkpointing_steps 10 \
+  --num_train_epochs 40 \
+  --checkpointing_steps 500 \
   --gradient_accumulation_steps 1 \
   --learning_rate 1e-3 \
   --lr_scheduler cosine_with_restarts \

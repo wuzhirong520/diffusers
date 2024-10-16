@@ -38,7 +38,7 @@ class NuscenesDatasetForCogvidx(Dataset):
         split: str = "train",
         encode_prompt = None,
         encode_video = None,
-        max_samples = 100
+        max_samples = 700
     ) -> None:
         super().__init__()
         self.data_root = data_root
@@ -63,7 +63,10 @@ class NuscenesDatasetForCogvidx(Dataset):
         self.frames_group = {} # (scene, image_paths)
         
         for my_scene in self.scenes:
-            self.frames_group[my_scene] = self.get_paths_from_scene(my_scene)
+            f = self.get_paths_from_scene(my_scene)
+            if len(f) >= max_num_frames :
+                self.frames_group[my_scene] = self.get_paths_from_scene(my_scene)
+        self.scenes = [k for k,v in self.frames_group.items()]
 
         print('Total samples: %d' % len(self.scenes))
 
@@ -113,6 +116,48 @@ class NuscenesDatasetForCogvidx(Dataset):
         paths.sort()
         return paths
     
+    def load_sample(self, index):
+        my_scene = self.scenes[index]
+        all_frames = self.frames_group[my_scene]
+        
+        # seek_start = random.randint(0, len(all_frames) - self.max_num_frames)
+        seek_start = 0
+        seek_path = all_frames[seek_start: seek_start + self.max_num_frames]            
+
+        scene_annotation = self.annotations[my_scene]
+
+        seek_id = seek_start//4*4
+        search_id = f"{seek_id}"
+        timestep = search_id if search_id in scene_annotation else str((int(search_id)//4-1)*4)
+
+        annotation = scene_annotation[timestep]
+        
+        caption = ""
+        selected_attr = ["Weather", "Time", "Road environment", "Critical objects"]
+        for attr in selected_attr:
+            anno = annotation.get(attr, "")
+            if anno == "":
+                continue
+            if anno[-1] == ".":
+                anno = anno[:-1] 
+            caption = caption + anno + ". "
+        
+        driving_prompt = annotation.get("Driving action", "").strip()
+        # print(driving_prompt)
+
+        frames = torch.Tensor(np.stack([image2arr(path) for path in seek_path]))
+
+        selected_num_frames = frames.shape[0]
+
+        assert (selected_num_frames - 1) % 4 == 0
+
+        # Training transforms
+        frames = (frames - 127.5) / 127.5
+        frames = frames.permute(0, 3, 1, 2) # [F, C, H, W]
+        frames = resize(frames,size=[self.height, self.width],interpolation=InterpolationMode.BICUBIC)
+
+        return driving_prompt, frames
+
     def preload(self):
         self.instance_prompts = []
         self.instance_videos =[]
@@ -125,55 +170,43 @@ class NuscenesDatasetForCogvidx(Dataset):
         for index in range(len(self.scenes)):
             progress_dataset_bar.update(1)
 
-            my_scene = self.scenes[index]
-            all_frames = self.frames_group[my_scene]
-            
-            seek_start = random.randint(0, len(all_frames) - self.max_num_frames)
-            seek_path = all_frames[seek_start: seek_start + self.max_num_frames]            
+            prompt, video = self.load_sample(index)
 
-            scene_annotation = self.annotations[my_scene]
-
-            seek_id = seek_start//4*4
-            search_id = f"{seek_id}"
-            timestep = search_id if search_id in scene_annotation else str((int(search_id)//4-1)*4)
-
-            annotation = scene_annotation[timestep]
-            
-            caption = ""
-            selected_attr = ["Weather", "Time", "Road environment", "Critical objects"]
-            for attr in selected_attr:
-                anno = annotation.get(attr, "")
-                if anno == "":
-                    continue
-                if anno[-1] == ".":
-                    anno = anno[:-1] 
-                caption = caption + anno + ". "
-            
-            driving_prompt = annotation.get("Driving action", "").strip()
-            # print(driving_prompt)
-
-            frames = torch.Tensor(np.stack([image2arr(path) for path in seek_path]))
-
-            selected_num_frames = frames.shape[0]
-
-            assert (selected_num_frames - 1) % 4 == 0
-
-            # Training transforms
-            frames = (frames - 127.5) / 127.5
-            frames = frames.permute(0, 3, 1, 2) # [F, C, H, W]
-            frames = resize(frames,size=[self.height, self.width],interpolation=InterpolationMode.BICUBIC)
-
-            prompt = self.encode_prompt(driving_prompt)
-            video = self.encode_video(frames)
+            prompt = self.encode_prompt(prompt).to("cpu")
+            v1,v2 = self.encode_video(video)
+            video = (v1.sample().to("cpu"),v2.sample().to("cpu"))
 
             self.instance_prompts.append(prompt)
             self.instance_videos.append(video)
+
+        # progress_dataset_bar = tqdm(
+        #     range(0, len(self.scenes)),
+        #     desc="Encoding prompts and videos",
+        # )
+        # batch_size = 32
+        # for index in range(0, len(self.scenes), batch_size):
+        #     progress_dataset_bar.update(batch_size)
+        #     index_next = index+batch_size
+        #     if(index_next>len(self.scenes)):
+        #         index_next=len(self.scenes)
+        #     videos_encoded = self.encode_video(torch.stack(self.instance_videos[index:index_next]))
+        #     prompts_encoded = self.encode_prompt(self.instance_prompts[index:index_next])
+        #     for i in range(index,index_next):
+        #         self.instance_videos[i] = videos_encoded[i-index:i-index+1]
+        #         self.instance_prompts[i] = prompts_encoded[i-index:i-index+1]
         
     def __getitem__(self, index):
         return {
             "instance_prompt": self.instance_prompts[index],
             "instance_video": self.instance_videos[index],
         }
+        # prompt, video = self.load_sample(index)
+        # prompt = self.encode_prompt(prompt)
+        # video = self.encode_video(video)
+        # return {
+        #     "instance_prompt": prompt,
+        #     "instance_video": video,
+        # }
 
 if __name__ == "__main__":
     train_dataset = NuscenesDatasetForCogvidx()

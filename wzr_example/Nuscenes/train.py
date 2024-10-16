@@ -1021,7 +1021,11 @@ def main(args):
         # only upcast trainable parameters (LoRA) into fp32
         cast_training_params([transformer], dtype=torch.float32)
 
-    transformer_lora_parameters = list(filter(lambda p: p.requires_grad, transformer.parameters()))
+    # print([p.requires_grad for p in transformer.patch_embed.proj.parameters()])
+    # transformer.patch_embed.proj.requires_grad_(True)
+    # print([p.requires_grad for p in transformer.patch_embed.proj.parameters()])
+    # print(list(filter(lambda p: True, transformer.patch_embed.proj.parameters())))
+    transformer_lora_parameters = list(filter(lambda p: p.requires_grad, transformer.parameters())) + list(filter(lambda p: True, transformer.patch_embed.proj.parameters()))
 
     # Optimization parameters
     transformer_parameters_with_lr = {"params": transformer_lora_parameters, "lr": args.learning_rate}
@@ -1057,7 +1061,7 @@ def main(args):
             tokenizer,
             text_encoder,
             [prompt],
-            transformer.config.max_text_seq_length,
+            unwrap_model(transformer).config.max_text_seq_length,
             accelerator.device,
             weight_dtype,
             requires_grad=False,
@@ -1080,8 +1084,14 @@ def main(args):
         for example in examples:
             latent_dist, image_latent_dist = example["instance_video"]
 
-            video_latents = latent_dist.sample() * vae.config.scaling_factor
-            image_latents = image_latent_dist.sample() * vae.config.scaling_factor
+            latent_dist = latent_dist.to(accelerator.device)
+            image_latent_dist = image_latent_dist.to(accelerator.device)
+
+            # video_latents = latent_dist.sample() * vae.config.scaling_factor
+            # image_latents = image_latent_dist.sample() * vae.config.scaling_factor
+            video_latents = latent_dist * vae.config.scaling_factor
+            image_latents = image_latent_dist * vae.config.scaling_factor
+
             video_latents = video_latents.permute(0, 2, 1, 3, 4)
             image_latents = image_latents.permute(0, 2, 1, 3, 4)
 
@@ -1100,7 +1110,7 @@ def main(args):
         videos = videos.to(memory_format=torch.contiguous_format).float()
         images = images.to(memory_format=torch.contiguous_format).float()
 
-        prompts = [example["instance_prompt"] for example in examples]
+        prompts = [example["instance_prompt"].to(accelerator.device) for example in examples]
         prompts = torch.cat(prompts)
 
         return {
@@ -1444,7 +1454,7 @@ def main(args):
                     args=args,
                     accelerator=accelerator,
                     pipeline_args=pipeline_args,
-                    epoch=epoch,
+                    epoch=0,
                     is_final_validation=True,
                 )
                 validation_outputs.extend(video)

@@ -15,17 +15,17 @@ from transformers import T5EncoderModel
 
 # transformer = CogVideoXTransformer3DModel.from_pretrained("THUDM/CogVideoX-2b", subfolder="transformer", torch_dtype=torch.float16, in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True)
 
-transformer = CogVideoXTransformer3DModel.from_pretrained("/root/autodl-fs/CogVidx-2b-I2V-base-transfomer", torch_dtype=torch.float16, in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True)
+# transformer = CogVideoXTransformer3DModel.from_pretrained("/root/autodl-fs/CogVidx-2b-I2V-base-transfomer", torch_dtype=torch.float16, in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True)
 
 
 # vae = AutoencoderKLCogVideoX.from_pretrained("THUDM/CogVideoX-2b", subfolder="vae", torch_dtype=torch.float16)
 
-# pipe = CogVideoXImageToVideoPipeline.from_pretrained("THUDM/CogVideoX-2b", 
-#                                                     #  text_encoder=text_encoder,
-#                                                     transformer=transformer,
-#                                                     #  vae=vae,
-#                                                     torch_dtype=torch.float16
-#                                                     )
+pipe = CogVideoXImageToVideoPipeline.from_pretrained("THUDM/CogVideoX-5b-I2V", 
+                                                    #  text_encoder=text_encoder,
+                                                    # transformer=transformer,
+                                                    #  vae=vae,
+                                                    torch_dtype=torch.float16
+                                                    )
 
 # transformer.save_pretrained("/root/autodl-fs/CogVidx-2b-I2V-base-transfomer")
 exit(0)
