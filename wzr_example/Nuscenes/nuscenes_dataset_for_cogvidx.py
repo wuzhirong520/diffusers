@@ -38,7 +38,8 @@ class NuscenesDatasetForCogvidx(Dataset):
         split: str = "train",
         encode_prompt = None,
         encode_video = None,
-        max_samples = 700
+        max_samples = 700,
+        preprocessed_data_path = "/root/autodl-fs/dataset_700_samples"
     ) -> None:
         super().__init__()
         self.data_root = data_root
@@ -48,37 +49,56 @@ class NuscenesDatasetForCogvidx(Dataset):
         self.split = split
         self.encode_prompt=encode_prompt
         self.encode_video=encode_video
+        self.preprocessed_data_path = preprocessed_data_path
 
-        self.nusc = NuScenes(version='v1.0-trainval', dataroot=self.data_root, verbose=True)
+        if preprocessed_data_path is not None:
+            progress_dataset_bar = tqdm(
+                range(0, prompts.shape[0]),
+                desc="Loading preprocessed prompts and videos",
+            )
+            prompts = torch.load(os.path.join(preprocessed_data_path,"prompts.npy"))
+            videos = torch.load(os.path.join(preprocessed_data_path,"videos.npy"))
+            images = torch.load(os.path.join(preprocessed_data_path,"images.npy"))
+            self.instance_prompts = []
+            self.instance_videos =[]
+            for i in range(prompts.shape[0]):
+                progress_dataset_bar.update(1)
+                self.instance_prompts.append(prompts[i])
+                self.instance_videos.append((videos[i],images[i]))
+        else:
 
-        self.splits = create_splits_scenes()
+            self.nusc = NuScenes(version='v1.0-trainval', dataroot=self.data_root, verbose=True)
 
-        # training samples
-        self.samples_groups = self.group_sample_by_scene(split)
-        
-        self.scenes = list(self.samples_groups.keys())
+            self.splits = create_splits_scenes()
 
-        self.scenes = self.scenes[:max_samples]
-        
-        self.frames_group = {} # (scene, image_paths)
-        
-        for my_scene in self.scenes:
-            f = self.get_paths_from_scene(my_scene)
-            if len(f) >= max_num_frames :
-                self.frames_group[my_scene] = self.get_paths_from_scene(my_scene)
-        self.scenes = [k for k,v in self.frames_group.items()]
+            # training samples
+            self.samples_groups = self.group_sample_by_scene(split)
+            
+            self.scenes = list(self.samples_groups.keys())
 
-        print('Total samples: %d' % len(self.scenes))
+            self.scenes = self.scenes[:max_samples]
+            
+            self.frames_group = {} # (scene, image_paths)
+            
+            for my_scene in self.scenes:
+                f = self.get_paths_from_scene(my_scene)
+                if len(f) >= max_num_frames :
+                    self.frames_group[my_scene] = self.get_paths_from_scene(my_scene)
+            self.scenes = [k for k,v in self.frames_group.items()]
 
-        # search annotations
-        json_path = f'{data_root}/nusc_video_{split}_8_ov-7b_dict.json'
-        with open(json_path, 'r') as f:
-            self.annotations = json.load(f)
-        
-        self.preload()
+            print('Total samples: %d' % len(self.scenes))
+
+            # search annotations
+            json_path = f'{data_root}/nusc_video_{split}_8_ov-7b_dict.json'
+            with open(json_path, 'r') as f:
+                self.annotations = json.load(f)
+            
+            self.preload()
 
     
     def __len__(self):
+        if self.preprocessed_data_path is not None:
+            return len(self.instance_prompts)
         return len(self.scenes)
 
     def augmentation(self, frame, transform, state):
@@ -120,8 +140,7 @@ class NuscenesDatasetForCogvidx(Dataset):
         my_scene = self.scenes[index]
         all_frames = self.frames_group[my_scene]
         
-        # seek_start = random.randint(0, len(all_frames) - self.max_num_frames)
-        seek_start = 0
+        seek_start = random.randint(0, len(all_frames) - self.max_num_frames)
         seek_path = all_frames[seek_start: seek_start + self.max_num_frames]            
 
         scene_annotation = self.annotations[my_scene]
