@@ -161,10 +161,19 @@ class NuscenesDatasetForCogvidx(Dataset):
             return self.__getitem__(np.random.randint(0, self.__len__() - 1))
 
 if __name__ == "__main__":
-    train_dataset = NuscenesDatasetForCogvidx(data_root="/root/autodl-fs/Nuscenes-v1.0-trainval-CAM_FRONT",split="train")
-    scene = train_dataset.scenes[0]
-    print(scene)
-    os.makedirs(scene,exist_ok=True)
-    frames = train_dataset.get_paths_from_scene(scene)
-    for i,path in enumerate(frames):
-        os.system(f"cp {path} ./{scene}/{i}.jpg")
+    # train_dataset = NuscenesDatasetForCogvidx(data_root="/root/autodl-fs/Nuscenes-v1.0-trainval-CAM_FRONT",split="val")
+    # scene = train_dataset.scenes[1]
+    # print(scene)
+    # os.makedirs(scene,exist_ok=True)
+    # frames = train_dataset.get_paths_from_scene(scene)
+    # for i,path in enumerate(frames):
+    #     os.system(f"cp {path} ./{scene}/{i}.jpg")
+    scene = "scene-0012"
+    frames=[]
+    for i in range(33):
+        image = Image.open(f"{scene}/{i}.jpg")
+        frames.append(image)
+    import sys
+    sys.path.append("/root/PKU/diffusers/src")
+    from diffusers.utils import export_to_video
+    export_to_video(frames, f"{scene}/video.mp4",fps=2)

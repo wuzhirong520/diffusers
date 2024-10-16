@@ -37,7 +37,7 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, T5EncoderModel, T5Tokenizer
 
 import sys
-sys.path.append("/root/PKU_new/diffusers/src")
+sys.path.append("/root/PKU/diffusers/src")
 import diffusers
 from diffusers import (
     AutoencoderKLCogVideoX,
@@ -66,56 +66,76 @@ from diffusers.image_processor import VaeImageProcessor
 
 from nuscenes_dataset_for_cogvidx import NuscenesDatasetForCogvidx
 
-ckpt_folder = "/root/autodl-fs/ckpt/ckpt-9000"
+# from safetensors.torch import load_file
+# p = load_file("/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain/checkpoint-10/pytorch_lora_weights.safetensors")
+# print(p.keys())
+# exit(0)
 
-transformer = CogVideoXTransformer3DModel.from_pretrained(
-    "/root/autodl-fs/CogVidx-2b-I2V-base-transfomer",
-    torch_dtype=torch.float16,
-)
+ckpt_folder_root = "/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain"
+# validation_prompt = "The ego car is moving forward slowly, approaching the barrier gate."
+# validation_image = "/root/PKU/diffusers/wzr_example/Nuscenes/val/scene-0003/0.jpg"
+validation_prompt = "The ego car moves forward at a steady pace, occasionally shifting slightly to the left and right as it navigates the curve of the road."
+validation_image = "/root/PKU/diffusers/wzr_example/Nuscenes/val/scene-0012/0.jpg"
 
-pipe = CogVideoXImageToVideoPipeline.from_pretrained(
-    "THUDM/CogVideoX-2b",
-    torch_dtype=torch.float16,
-    transformer = transformer
-).to("cuda")
-# pipe.enable_model_cpu_offload()
-# pipe.enable_sequential_cpu_offload()
-pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config,)
+for ckpt_path in sorted(os.listdir(ckpt_folder_root),reverse=True):
 
-pipe.vae.enable_slicing()
-pipe.vae.enable_tiling()
+    ckpt_folder = os.path.join(ckpt_folder_root, ckpt_path)
+    if not os.path.isdir(ckpt_folder) :
+        continue
+    print(ckpt_folder)
 
-# Load LoRA weights
-lora_alpha = 64
-rank = 128
-lora_scaling = lora_alpha / rank
-pipe.load_lora_weights(ckpt_folder, adapter_name="cogvideox-i2v-lora")
-pipe.set_adapters(["cogvideox-i2v-lora"], [lora_scaling])
+    transformer = CogVideoXTransformer3DModel.from_pretrained(
+        "/root/autodl-fs/CogVidx-2b-I2V-base-transfomer",
+        torch_dtype=torch.float16,
+    )
 
+    pipe = CogVideoXImageToVideoPipeline.from_pretrained(
+        "THUDM/CogVideoX-2b",
+        torch_dtype=torch.float16,
+        transformer = transformer
+    )
+    # ).to("cuda")
+    pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config,)
 
-validation_prompt = "The ego car is moving forward slowly, approaching the barrier gate."
-validation_image = "/root/PKU/diffusers/wzr_example/Nuscenes/val/scene-0003/0.jpg"
+    pipe.vae.enable_slicing()
+    pipe.vae.enable_tiling()
 
-pipeline_args = {
-    "image": load_image(validation_image),
-    "prompt": validation_prompt,
-    "guidance_scale": 6,
-    "use_dynamic_cfg": False,
-    "height": 480,
-    "width": 720,
-    "num_frames": 33
-}
+    # Load LoRA weights
+    lora_alpha = 64
+    rank = 128
+    lora_scaling = lora_alpha / rank
+    pipe.load_lora_weights(ckpt_folder, adapter_name="cogvideox-i2v-lora")
+    pipe.set_adapters(["cogvideox-i2v-lora"], [lora_scaling])
 
-seed=42
+    from safetensors.torch import load_file
+    transformer_patch_embed_proj = load_file(os.path.join(ckpt_folder,"transformer_patch_embed_proj.safetensors"))
+    transformer.patch_embed.proj.weight.data = transformer_patch_embed_proj['transformer.patch_embed.proj.weight'].to(torch.float16)
+    transformer.patch_embed.proj.bias.data = transformer_patch_embed_proj['transformer.patch_embed.proj.bias'].to(torch.float16)
 
-generator = torch.Generator(device="cuda").manual_seed(seed) if seed else None
+    pipe.enable_model_cpu_offload()
+    pipe.enable_sequential_cpu_offload()
 
-pt_images = pipe(**pipeline_args, generator=generator, output_type="pt").frames[0]
-pt_images = torch.stack([pt_images[i] for i in range(pt_images.shape[0])])
+    pipeline_args = {
+        "image": load_image(validation_image),
+        "prompt": validation_prompt,
+        "guidance_scale": 6,
+        "use_dynamic_cfg": False,
+        "height": 480,
+        "width": 720,
+        "num_frames": 33
+    }
 
-image_np = VaeImageProcessor.pt_to_numpy(pt_images)
-image_pil = VaeImageProcessor.numpy_to_pil(image_np)
+    seed=42
 
-filename = os.path.join(ckpt_folder, "validation.mp4")
+    generator = torch.Generator(device="cuda").manual_seed(seed) if seed else None
 
-export_to_video(image_pil, filename, fps=8)
+    with torch.no_grad():
+        pt_images = pipe(**pipeline_args, generator=generator, output_type="pt").frames[0]
+    pt_images = torch.stack([pt_images[i] for i in range(pt_images.shape[0])])
+
+    image_np = VaeImageProcessor.pt_to_numpy(pt_images)
+    image_pil = VaeImageProcessor.numpy_to_pil(image_np)
+
+    filename = os.path.join(ckpt_folder, "validation.mp4")
+
+    export_to_video(image_pil, filename, fps=2)

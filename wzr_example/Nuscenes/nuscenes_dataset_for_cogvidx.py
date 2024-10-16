@@ -39,7 +39,7 @@ class NuscenesDatasetForCogvidx(Dataset):
         encode_prompt = None,
         encode_video = None,
         max_samples = 700,
-        preprocessed_data_path = "/root/autodl-fs/dataset_700_samples"
+        preprocessed_data_path = "/root/autodl-fs/dataset_700_samples_fix"
     ) -> None:
         super().__init__()
         self.data_root = data_root
@@ -52,19 +52,19 @@ class NuscenesDatasetForCogvidx(Dataset):
         self.preprocessed_data_path = preprocessed_data_path
 
         if preprocessed_data_path is not None:
+            prompts = torch.load(os.path.join(preprocessed_data_path,"prompts.npy"))
+            videos = torch.load(os.path.join(preprocessed_data_path,"videos.npy"))
+            images = torch.load(os.path.join(preprocessed_data_path,"images.npy"))
             progress_dataset_bar = tqdm(
                 range(0, prompts.shape[0]),
                 desc="Loading preprocessed prompts and videos",
             )
-            prompts = torch.load(os.path.join(preprocessed_data_path,"prompts.npy"))
-            videos = torch.load(os.path.join(preprocessed_data_path,"videos.npy"))
-            images = torch.load(os.path.join(preprocessed_data_path,"images.npy"))
             self.instance_prompts = []
             self.instance_videos =[]
             for i in range(prompts.shape[0]):
                 progress_dataset_bar.update(1)
-                self.instance_prompts.append(prompts[i])
-                self.instance_videos.append((videos[i],images[i]))
+                self.instance_prompts.append(prompts[i:i+1])
+                self.instance_videos.append((videos[i:i+1],images[i:i+1]))
         else:
 
             self.nusc = NuScenes(version='v1.0-trainval', dataroot=self.data_root, verbose=True)

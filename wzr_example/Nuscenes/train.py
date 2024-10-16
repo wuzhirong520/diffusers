@@ -24,7 +24,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import transformers
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, InitProcessGroupKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
@@ -584,7 +584,7 @@ def log_validation(
                     .replace("/", "_")
                 )
                 filename = os.path.join(args.output_dir, f"{phase_name}_video_{epoch}_{i}_{prompt}.mp4")
-                export_to_video(video, filename, fps=8)
+                export_to_video(video, filename, fps=2)
                 video_filenames.append(filename)
 
             tracker.log(
@@ -945,6 +945,9 @@ def main(args):
     )
     transformer.add_adapter(transformer_lora_config)
 
+    # print(transformer)
+    # exit(0)
+
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
         model = model._orig_mod if is_compiled_module(model) else model
@@ -1016,16 +1019,16 @@ def main(args):
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
+    ### !!!! train transformer.patch_embed.proj
+    transformer.patch_embed.proj.weight.requires_grad_(True)
+    transformer.patch_embed.proj.bias.requires_grad_(True)
+
     # Make sure the trainable params are in float32.
     if args.mixed_precision == "fp16":
         # only upcast trainable parameters (LoRA) into fp32
         cast_training_params([transformer], dtype=torch.float32)
-
-    # print([p.requires_grad for p in transformer.patch_embed.proj.parameters()])
-    # transformer.patch_embed.proj.requires_grad_(True)
-    # print([p.requires_grad for p in transformer.patch_embed.proj.parameters()])
-    # print(list(filter(lambda p: True, transformer.patch_embed.proj.parameters())))
-    transformer_lora_parameters = list(filter(lambda p: p.requires_grad, transformer.parameters())) + list(filter(lambda p: True, transformer.patch_embed.proj.parameters()))
+    
+    transformer_lora_parameters = list(filter(lambda p: p.requires_grad, transformer.parameters()))
 
     # Optimization parameters
     transformer_parameters_with_lr = {"params": transformer_lora_parameters, "lr": args.learning_rate}
@@ -1037,7 +1040,7 @@ def main(args):
     )
     use_deepspeed_scheduler = (
         accelerator.state.deepspeed_plugin is not None
-        and "scheduler" not in accelerator.state.deepspeed_plugin.deepspeed_config
+        and "scheduler" in accelerator.state.deepspeed_plugin.deepspeed_config
     )
 
     optimizer = get_optimizer(args, params_to_optimize, use_deepspeed=use_deepspeed_optimizer)
@@ -1051,7 +1054,7 @@ def main(args):
 
         image_noise_sigma = torch.normal(mean=-3.0, std=0.5, size=(1,), device=image.device)
         image_noise_sigma = torch.exp(image_noise_sigma).to(dtype=image.dtype)
-        noisy_image = torch.randn_like(image) * image_noise_sigma[:, None, None, None, None]
+        noisy_image = torch.randn_like(image) * image_noise_sigma[:, None, None, None, None] + image
         image_latent_dist = vae.encode(noisy_image).latent_dist
 
         return latent_dist, image_latent_dist
@@ -1207,7 +1210,19 @@ def main(args):
             initial_global_step = 0
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
+            # p1 = unwrap_model(transformer).patch_embed.proj.weight
+            # print(p1)
             accelerator.load_state(os.path.join(args.output_dir, path))
+            from safetensors.torch import load_file
+            transformer_patch_embed_proj = load_file(os.path.join(os.path.join(args.output_dir, path),"transformer_patch_embed_proj.safetensors"))
+            unwrap_model(transformer).patch_embed.proj.weight.data = transformer_patch_embed_proj['transformer.patch_embed.proj.weight']
+            unwrap_model(transformer).patch_embed.proj.bias.data = transformer_patch_embed_proj['transformer.patch_embed.proj.bias']
+            # p2 = unwrap_model(transformer).patch_embed.proj.weight
+            # print(p2)
+            # with torch.no_grad():
+            #     print(torch.mean((p1-p2)**2))
+            # exit(0)
+
             global_step = int(path.split("-")[1])
 
             initial_global_step = global_step
@@ -1229,6 +1244,8 @@ def main(args):
         transformer.train()
 
         for step, batch in enumerate(train_dataloader):
+            # print(unwrap_model(transformer).patch_embed.proj.weight)
+            # print(unwrap_model(transformer).patch_embed.proj.weight.shape)
             models_to_accumulate = [transformer]
 
             with accelerator.accumulate(models_to_accumulate):
@@ -1305,7 +1322,7 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if accelerator.is_main_process:
+                if accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
@@ -1328,7 +1345,15 @@ def main(args):
                                     shutil.rmtree(removing_checkpoint)
 
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        
                         accelerator.save_state(save_path)
+
+                        from safetensors.torch import save_file
+                        save_file({
+                                "transformer.patch_embed.proj.weight" : unwrap_model(transformer).patch_embed.proj.weight,
+                                "transformer.patch_embed.proj.bias" : unwrap_model(transformer).patch_embed.proj.bias,
+                            }, os.path.join(save_path, "transformer_patch_embed_proj.safetensors"))
+
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -1431,6 +1456,11 @@ def main(args):
         lora_scaling = args.lora_alpha / args.rank
         pipe.load_lora_weights(args.output_dir, adapter_name="cogvideox-i2v-lora")
         pipe.set_adapters(["cogvideox-i2v-lora"], [lora_scaling])
+
+        from safetensors.torch import load_file
+        transformer_patch_embed_proj = load_file(os.path.join(os.path.join(args.output_dir, path),"transformer_patch_embed_proj.safetensors"))
+        transformer_.patch_embed.proj.weight.data = transformer_patch_embed_proj['transformer.patch_embed.proj.weight']
+        transformer_.patch_embed.proj.bias.data = transformer_patch_embed_proj['transformer.patch_embed.proj.bias']
 
         # Run inference
         validation_outputs = []

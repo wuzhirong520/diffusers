@@ -5,7 +5,7 @@ export TOKENIZERS_PARALLELISM=false
 
 export MODEL_PATH="THUDM/CogVideoX-2b"
 export DATASET_PATH="/root/autodl-fs/Nuscenes-v1.0-trainval-CAM_FRONT"
-export OUTPUT_PATH="/root/autodl-tmp/cogvideox-lora-single-node_test_full"
+export OUTPUT_PATH="/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain_fiximg"
 export CUDA_VISIBLE_DEVICES=0,1
 
   # --resume_from_checkpoint "/root/autodl-tmp/cogvideox-lora-single-node_test_from2000/checkpoint-2000" \
@@ -20,8 +20,8 @@ accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gp
   --enable_tiling \
   --enable_slicing \
   --instance_data_root $DATASET_PATH \
-  --validation_prompt "The ego car is moving forward slowly, approaching the barrier gate." \
-  --validation_images "/root/PKU/diffusers/wzr_example/Nuscenes/val/scene-0003/0.jpg" \
+  --validation_prompt "The ego car moves forward at a steady pace, occasionally shifting slightly to the left and right as it navigates the curve of the road." \
+  --validation_images "/root/PKU/diffusers/wzr_example/Nuscenes/val/scene-0012/0.jpg" \
   --validation_prompt_separator ::: \
   --num_validation_videos 1 \
   --validation_epochs 1 \
@@ -37,8 +37,8 @@ accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gp
   --skip_frames_start 0 \
   --skip_frames_end 0 \
   --train_batch_size 1 \
-  --num_train_epochs 40 \
-  --checkpointing_steps 500 \
+  --num_train_epochs 80 \
+  --checkpointing_steps 350 \
   --gradient_accumulation_steps 1 \
   --learning_rate 1e-3 \
   --lr_scheduler cosine_with_restarts \
@@ -50,4 +50,5 @@ accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gp
   --adam_beta2 0.95 \
   --max_grad_norm 1.0 \
   --allow_tf32 \
-  --report_to wandb
+  --report_to wandb \
+  # --resume_from_checkpoint "/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain/checkpoint-10"

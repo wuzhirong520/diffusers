@@ -37,7 +37,7 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, T5EncoderModel, T5Tokenizer
 
 import sys
-sys.path.append("/root/PKU_new/diffusers/src")
+sys.path.append("/root/PKU/diffusers/src")
 import diffusers
 from diffusers import (
     AutoencoderKLCogVideoX,
@@ -193,7 +193,7 @@ def encode_video(video):
 
         image_noise_sigma = torch.normal(mean=-3.0, std=0.5, size=(1,), device=image.device)
         image_noise_sigma = torch.exp(image_noise_sigma).to(dtype=image.dtype)
-        noisy_image = torch.randn_like(image) * image_noise_sigma[:, None, None, None, None]
+        noisy_image = torch.randn_like(image) * image_noise_sigma[:, None, None, None, None] + image
         image_latent_dist = vae.encode(noisy_image).latent_dist
 
     return latent_dist, image_latent_dist
@@ -216,7 +216,8 @@ train_dataset = NuscenesDatasetForCogvidx(
     width=720,
     max_num_frames=33,
     encode_video=encode_video,
-    encode_prompt=encode_prompt_
+    encode_prompt=encode_prompt_,
+    preprocessed_data_path=None
 )
 
 prompts = []
@@ -236,7 +237,7 @@ print(prompts.shape)
 print(videos.shape)
 print(images.shape)
 
-path = "/root/autodl-fs/dataset_700_samples"
+path = "/root/autodl-fs/dataset_700_samples_fix"
 os.makedirs(path, exist_ok=True)
 
 torch.save(prompts, os.path.join(path,"prompts.npy"))
