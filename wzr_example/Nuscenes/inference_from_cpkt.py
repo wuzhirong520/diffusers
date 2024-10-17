@@ -64,60 +64,28 @@ import torchvision.transforms as TT
 import numpy as np
 from diffusers.image_processor import VaeImageProcessor
 
-from nuscenes_dataset_for_cogvidx import NuscenesDatasetForCogvidx
+from load_cogvidx_2b_i2v_fintuned import LoadCogvidx2BI2VFintuned
+import PIL.Image
+import decord
+decord.bridge.set_bridge("torch")
 
-# from safetensors.torch import load_file
-# p = load_file("/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain/checkpoint-10/pytorch_lora_weights.safetensors")
-# print(p.keys())
-# exit(0)
+ckpt_folder = "/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain_fiximg/checkpoint-18900"
+val_folder_root = "/root/autodl-fs/nuscene_val"
+output_folder = "/root/PKU/diffusers/wzr_example/Nuscenes/val/val_videos"
 
-ckpt_folder_root = "/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain"
-# validation_prompt = "The ego car is moving forward slowly, approaching the barrier gate."
-# validation_image = "/root/PKU/diffusers/wzr_example/Nuscenes/val/scene-0003/0.jpg"
-validation_prompt = "The ego car moves forward at a steady pace, occasionally shifting slightly to the left and right as it navigates the curve of the road."
-validation_image = "/root/PKU/diffusers/wzr_example/Nuscenes/val/scene-0012/0.jpg"
+pipe = LoadCogvidx2BI2VFintuned(ckpt_folder)
 
-for ckpt_path in sorted(os.listdir(ckpt_folder_root),reverse=True):
+for scene in sorted(os.listdir(val_folder_root)):
 
-    ckpt_folder = os.path.join(ckpt_folder_root, ckpt_path)
-    if not os.path.isdir(ckpt_folder) :
-        continue
-    print(ckpt_folder)
+    val_path = os.path.join(val_folder_root, scene)
 
-    transformer = CogVideoXTransformer3DModel.from_pretrained(
-        "/root/autodl-fs/CogVidx-2b-I2V-base-transfomer",
-        torch_dtype=torch.float16,
-    )
-
-    pipe = CogVideoXImageToVideoPipeline.from_pretrained(
-        "THUDM/CogVideoX-2b",
-        torch_dtype=torch.float16,
-        transformer = transformer
-    )
-    # ).to("cuda")
-    pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config,)
-
-    pipe.vae.enable_slicing()
-    pipe.vae.enable_tiling()
-
-    # Load LoRA weights
-    lora_alpha = 64
-    rank = 128
-    lora_scaling = lora_alpha / rank
-    pipe.load_lora_weights(ckpt_folder, adapter_name="cogvideox-i2v-lora")
-    pipe.set_adapters(["cogvideox-i2v-lora"], [lora_scaling])
-
-    from safetensors.torch import load_file
-    transformer_patch_embed_proj = load_file(os.path.join(ckpt_folder,"transformer_patch_embed_proj.safetensors"))
-    transformer.patch_embed.proj.weight.data = transformer_patch_embed_proj['transformer.patch_embed.proj.weight'].to(torch.float16)
-    transformer.patch_embed.proj.bias.data = transformer_patch_embed_proj['transformer.patch_embed.proj.bias'].to(torch.float16)
-
-    pipe.enable_model_cpu_offload()
-    pipe.enable_sequential_cpu_offload()
+    val_img = load_image(os.path.join(val_path, "image0.jpg"))
+    val_video = decord.VideoReader(os.path.join(val_path, "video.mp4"), width=720, height=480).get_batch(list(range(0,33)))
+    val_prompt = open(os.path.join(val_path, "prompt.txt")).read()
 
     pipeline_args = {
-        "image": load_image(validation_image),
-        "prompt": validation_prompt,
+        "image": val_img,
+        "prompt": val_prompt,
         "guidance_scale": 6,
         "use_dynamic_cfg": False,
         "height": 480,
@@ -125,17 +93,14 @@ for ckpt_path in sorted(os.listdir(ckpt_folder_root),reverse=True):
         "num_frames": 33
     }
 
-    seed=42
-
-    generator = torch.Generator(device="cuda").manual_seed(seed) if seed else None
-
     with torch.no_grad():
-        pt_images = pipe(**pipeline_args, generator=generator, output_type="pt").frames[0]
-    pt_images = torch.stack([pt_images[i] for i in range(pt_images.shape[0])])
+        gen_video = pipe(**pipeline_args, output_type="pt").frames[0].to(val_video.device)
+        
+        pt_images = torch.cat([val_video,gen_video],dim=2)
+        pt_images = torch.stack([pt_images[i] for i in range(pt_images.shape[0])])
+        image_np = VaeImageProcessor.pt_to_numpy(pt_images)
+        image_pil = VaeImageProcessor.numpy_to_pil(image_np)
 
-    image_np = VaeImageProcessor.pt_to_numpy(pt_images)
-    image_pil = VaeImageProcessor.numpy_to_pil(image_np)
-
-    filename = os.path.join(ckpt_folder, "validation.mp4")
+    filename = os.path.join(output_folder, f"{scene}.mp4")
 
     export_to_video(image_pil, filename, fps=2)

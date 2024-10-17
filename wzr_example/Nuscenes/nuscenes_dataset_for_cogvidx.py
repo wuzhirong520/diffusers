@@ -38,7 +38,8 @@ class NuscenesDatasetForCogvidx(Dataset):
         split: str = "train",
         encode_prompt = None,
         encode_video = None,
-        max_samples = 700,
+        max_samples: int = 700,
+        preload_all_data: bool = True,
         preprocessed_data_path = "/root/autodl-fs/dataset_700_samples_fix"
     ) -> None:
         super().__init__()
@@ -49,9 +50,10 @@ class NuscenesDatasetForCogvidx(Dataset):
         self.split = split
         self.encode_prompt=encode_prompt
         self.encode_video=encode_video
+        self.preload_all_data = preload_all_data
         self.preprocessed_data_path = preprocessed_data_path
 
-        if preprocessed_data_path is not None:
+        if preload_all_data and preprocessed_data_path is not None:
             prompts = torch.load(os.path.join(preprocessed_data_path,"prompts.npy"))
             videos = torch.load(os.path.join(preprocessed_data_path,"videos.npy"))
             images = torch.load(os.path.join(preprocessed_data_path,"images.npy"))
@@ -76,7 +78,8 @@ class NuscenesDatasetForCogvidx(Dataset):
             
             self.scenes = list(self.samples_groups.keys())
 
-            self.scenes = self.scenes[:max_samples]
+            if len(self.scenes) > max_samples:
+                self.scenes = self.scenes[:max_samples]
             
             self.frames_group = {} # (scene, image_paths)
             
@@ -93,11 +96,12 @@ class NuscenesDatasetForCogvidx(Dataset):
             with open(json_path, 'r') as f:
                 self.annotations = json.load(f)
             
-            self.preload()
+            if preload_all_data:
+                self.preload()
 
     
     def __len__(self):
-        if self.preprocessed_data_path is not None:
+        if self.preload_all_data:
             return len(self.instance_prompts)
         return len(self.scenes)
 
@@ -177,6 +181,12 @@ class NuscenesDatasetForCogvidx(Dataset):
 
         return driving_prompt, frames
 
+    def encode(self, prompt, video):
+        prompt = self.encode_prompt(prompt).to("cpu")
+        v1,v2 = self.encode_video(video)
+        video = (v1.sample().to("cpu"),v2.sample().to("cpu"))
+        return prompt, video
+
     def preload(self):
         self.instance_prompts = []
         self.instance_videos =[]
@@ -190,42 +200,24 @@ class NuscenesDatasetForCogvidx(Dataset):
             progress_dataset_bar.update(1)
 
             prompt, video = self.load_sample(index)
-
-            prompt = self.encode_prompt(prompt).to("cpu")
-            v1,v2 = self.encode_video(video)
-            video = (v1.sample().to("cpu"),v2.sample().to("cpu"))
+            prompt, video = self.encode(prompt, video)
 
             self.instance_prompts.append(prompt)
             self.instance_videos.append(video)
-
-        # progress_dataset_bar = tqdm(
-        #     range(0, len(self.scenes)),
-        #     desc="Encoding prompts and videos",
-        # )
-        # batch_size = 32
-        # for index in range(0, len(self.scenes), batch_size):
-        #     progress_dataset_bar.update(batch_size)
-        #     index_next = index+batch_size
-        #     if(index_next>len(self.scenes)):
-        #         index_next=len(self.scenes)
-        #     videos_encoded = self.encode_video(torch.stack(self.instance_videos[index:index_next]))
-        #     prompts_encoded = self.encode_prompt(self.instance_prompts[index:index_next])
-        #     for i in range(index,index_next):
-        #         self.instance_videos[i] = videos_encoded[i-index:i-index+1]
-        #         self.instance_prompts[i] = prompts_encoded[i-index:i-index+1]
         
     def __getitem__(self, index):
-        return {
-            "instance_prompt": self.instance_prompts[index],
-            "instance_video": self.instance_videos[index],
-        }
-        # prompt, video = self.load_sample(index)
-        # prompt = self.encode_prompt(prompt)
-        # video = self.encode_video(video)
-        # return {
-        #     "instance_prompt": prompt,
-        #     "instance_video": video,
-        # }
+        if self.preload_all_data:
+            return {
+                "instance_prompt": self.instance_prompts[index],
+                "instance_video": self.instance_videos[index],
+            }
+        else:
+            prompt, video = self.load_sample(index)
+            prompt, video = self.encode(prompt, video)
+            return {
+                "instance_prompt": prompt,
+                "instance_video": video,
+            }
 
 if __name__ == "__main__":
     train_dataset = NuscenesDatasetForCogvidx()

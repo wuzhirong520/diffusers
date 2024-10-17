@@ -9,7 +9,7 @@ def get_frames(filename):
 import torch
 
 file1 = "/root/PKU/diffusers/wzr_example/Nuscenes/val/scene-0012/video.mp4"
-file2 = "/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain/validation_video_1_0_The_ego_car_moves_forward.mp4"
+file2 = "/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain_fiximg/validation_video_41_0_The_ego_car_moves_forward.mp4"
 file3 = "/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain/validation_video_2_0_The_ego_car_moves_forward.mp4"
 file4 = "/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain/validation_video_3_0_The_ego_car_moves_forward.mp4"
 
