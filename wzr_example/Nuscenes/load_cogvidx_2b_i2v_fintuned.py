@@ -60,8 +60,8 @@ def LoadCogvidx2BI2VFintuned(lora_weight_path):
     transformer.patch_embed.proj.weight.data = transformer_patch_embed_proj['transformer.patch_embed.proj.weight'].to(torch.float16)
     transformer.patch_embed.proj.bias.data = transformer_patch_embed_proj['transformer.patch_embed.proj.bias'].to(torch.float16)
 
-    pipe.enable_model_cpu_offload()
-    pipe.enable_sequential_cpu_offload()
+    # pipe.enable_model_cpu_offload()
+    # pipe.enable_sequential_cpu_offload()
     pipe.vae.enable_slicing()
     pipe.vae.enable_tiling()
 
