@@ -5,7 +5,7 @@ export TOKENIZERS_PARALLELISM=false
 
 export MODEL_PATH="THUDM/CogVideoX-2b"
 export DATASET_PATH="/root/autodl-fs/Nuscenes-v1.0-trainval-CAM_FRONT"
-export OUTPUT_PATH="/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain_fiximg"
+export OUTPUT_PATH="/root/autodl-fs/cogvideox-lora-single-node_test_full_withembedtrain_test"
 export CUDA_VISIBLE_DEVICES=0,1
 
   # --resume_from_checkpoint "/root/autodl-tmp/cogvideox-lora-single-node_test_from2000/checkpoint-2000" \
@@ -13,7 +13,8 @@ export CUDA_VISIBLE_DEVICES=0,1
   # --validation_prompt "The ego car speeds up, then slows down as it approaches a red traffic light. It stops at the traffic light, waits for it to turn green, and then continues driving forward." \
   # --validation_images "/root/PKU/diffusers/wzr_example/Nuscenes/val/scene-0001/0.jpg" \
 
-accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gpu \
+#--multi_gpu
+accelerate launch --config_file accelerate_config_machine_single.yaml  \
   train.py \
   --gradient_checkpointing \
   --pretrained_model_name_or_path $MODEL_PATH \
@@ -28,7 +29,6 @@ accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gp
   --seed 42 \
   --rank 128 \
   --lora_alpha 64 \
-  --mixed_precision fp16 \
   --output_dir $OUTPUT_PATH \
   --height 480 \
   --width 720 \
@@ -51,4 +51,5 @@ accelerate launch --config_file accelerate_config_machine_single.yaml --multi_gp
   --max_grad_norm 1.0 \
   --allow_tf32 \
   --report_to wandb \
+  --mixed_precision fp16 \
   # --resume_from_checkpoint "/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain/checkpoint-10"

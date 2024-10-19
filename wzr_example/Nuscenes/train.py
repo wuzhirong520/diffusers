@@ -877,13 +877,13 @@ def main(args):
     # CogVideoX-5b and CogVideoX-5b-I2V weights are stored in bfloat16
     load_dtype = torch.bfloat16 if "5b" in args.pretrained_model_name_or_path.lower() else torch.float16
     transformer = CogVideoXTransformer3DModel.from_pretrained(
-        # args.pretrained_model_name_or_path,
-        # subfolder="transformer",
-        "/root/autodl-fs/CogVidx-2b-I2V-base-transfomer",
+        args.pretrained_model_name_or_path,
+        subfolder="transformer",
+        # "/root/autodl-fs/CogVidx-2b-I2V-base-transfomer",
         torch_dtype=load_dtype,
         revision=args.revision,
         variant=args.variant,
-        # in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
+        in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
     )
 
     vae = AutoencoderKLCogVideoX.from_pretrained(
@@ -959,13 +959,16 @@ def main(args):
             transformer_lora_layers_to_save = None
 
             for model in models:
+                if accelerator.distributed_type == DistributedType.DEEPSPEED:
+                    model = unwrap_model(model)
                 if isinstance(model, type(unwrap_model(transformer))):
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
-                # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                if accelerator.distributed_type != DistributedType.DEEPSPEED:
+                    # make sure to pop weight so that corresponding model is not saved again
+                    weights.pop()
 
             CogVideoXImageToVideoPipeline.save_lora_weights(
                 output_dir,
@@ -1425,13 +1428,13 @@ def main(args):
         free_memory()
 
         transformer_ = CogVideoXTransformer3DModel.from_pretrained(
-            # args.pretrained_model_name_or_path,
-            # subfolder="transformer",
-            "/root/autodl-fs/CogVidx-2b-I2V-base-transfomer",
+            args.pretrained_model_name_or_path,
+            subfolder="transformer",
+            # "/root/autodl-fs/CogVidx-2b-I2V-base-transfomer",
             torch_dtype=load_dtype,
             revision=args.revision,
             variant=args.variant,
-            # in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
+            in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
         )
 
         # Final test inference
