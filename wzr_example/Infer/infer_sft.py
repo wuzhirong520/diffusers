@@ -29,7 +29,7 @@ text_encoder = T5EncoderModel.from_pretrained(
 )
 
 transformer = CogVideoXTransformer3DModel.from_pretrained(
-        "/root/autodl-fs/cogvideox-D4-clean-image-sft/checkpoint-1000/transformer",
+        "/root/autodl-fs/cogvideox-D4-clean-image-sft/1022",
         torch_dtype=torch.float16,
         revision=None,
         variant=None,
@@ -83,16 +83,38 @@ infer vista demos
 # import PIL.Image
 # decord.bridge.set_bridge("torch")
 
-# vista_actions = ["right","left","stop","forward"]
-# actions = ["turn right","turn left","wait","go straight"]
+# # vista_actions = ["right","left","stop","forward", "right", "left"]
+# # actions = ["turn right","turn left","wait","go straight", "sharp right turn","sharp left turn"]
+# # vista_actions = ["left", "left"]
+# # actions = ["turn left", "sharp left turn"]
+# vista_actions = ["left","left","left","right","right","right","forward","forward","forward","forward","forward","forward","stop"]
+# actions = ["shift slightly to the left",
+#            "sharp left turn",
+#            "follow the road left",
+
+#            "shift slightly to the right",
+#            "sharp right turn",
+#            "follow the road right",
+
+#            "go straight",
+#            "maintain speed",
+#            "speed up",
+#            "slow down",
+#            "drive fast",
+#            "drive slowly",
+#            "wait"
+#            ]
 # demos_per_action = 10
 # vista_demo_path = "/root/autodl-fs/vista_demos"
-# infer_path = "./val"
+# infer_path = "./val1022"
 
 # os.makedirs(infer_path, exist_ok=True)
 
-# for video_id in range(9, demos_per_action+1):
-#     for action_id in range(4) :
+# for video_id in range(1, demos_per_action+1):
+#     for action_id in range(len(actions)) :
+#         save_path = os.path.join(infer_path, f"{actions[action_id]}-{video_id}.mp4")
+#         if os.path.exists(save_path):
+#             continue
 #         vista_video_path = os.path.join(vista_demo_path, f"{vista_actions[action_id]}-{video_id}.mp4")
 #         image = decord.VideoReader(vista_video_path, width=720, height=480).get_batch([0]).squeeze(0)
 #         image = PIL.Image.fromarray(image.numpy())
@@ -107,8 +129,12 @@ infer vista demos
 #             "num_frames": 33
 #         }
 #         frames = pipe(**pipeline_args).frames[0]
-#         export_to_video(frames, os.path.join(infer_path, f"{actions[action_id]}-{video_id}.mp4"), fps=8)
+#         export_to_video(frames,save_path , fps=8)
 
+
+'''
+infer nuscenes
+'''
 from PIL import Image
 import numpy as np
 def image2pil(filename):
@@ -134,7 +160,7 @@ val_dataset = NuscenesDatasetForCogvidx(
         split="val",
         preload_all_data=False)
 
-infer_path = "./val2"
+infer_path = "./val1022"
 
 os.makedirs(infer_path, exist_ok=True)
 
@@ -148,6 +174,8 @@ height = 480
 
 for i in range(len(val_dataset)):
     scene_name = val_dataset.scenes[i]
+    # if scene_name!='scene-0013':
+    #     continue
     print(scene_name)
     frames = [image2pil(path) for path in val_dataset.frames_group[scene_name][:num_frames]]
     frames = [img.resize((width, height)) for img in frames]
@@ -168,19 +196,43 @@ for i in range(len(val_dataset)):
     
     prompt = action_annotations[scene_name]["0"] + ". " + caption
     
-    print(prompt)
+    # actions = ["turn right","turn left","wait","go straight", "sharp right turn","sharp left turn"]
+    actions = ["shift slightly to the left",
+           "sharp left turn",
+           "follow the road left",
 
-    pipeline_args = {
-        "image": image,
-        "prompt": prompt,
-        "guidance_scale": 6,
-        "use_dynamic_cfg": True,
-        "height": 480,
-        "width": 720,
-        "num_frames": 33
-    }
-    frames = pipe(**pipeline_args).frames[0]
-    name_prefix = prompt.replace(" ", "_").strip()[:40]
+           "shift slightly to the right",
+           "sharp right turn",
+           "follow the road right",
 
-    export_to_video(frames, os.path.join(infer_path, f"{scene_name}_{name_prefix}.mp4"), fps=8)
+           "go straight",
+           "maintain speed",
+           "speed up",
+           "slow down",
+           "drive fast",
+           "drive slowly",
+           "wait"
+           ]
+    
+    for prompt in actions:
+
+        print(scene_name, prompt)
+
+        name_prefix = prompt.replace(" ", "_").strip()[:40]
+        save_path = os.path.join(infer_path, f"{scene_name}_{name_prefix}.mp4")
+        if os.path.exists(save_path):
+            continue
+
+        pipeline_args = {
+            "image": image,
+            "prompt": prompt,
+            "guidance_scale": 6,
+            "use_dynamic_cfg": True,
+            "height": 480,
+            "width": 720,
+            "num_frames": 33
+        }
+        frames = pipe(**pipeline_args).frames[0]
+
+        export_to_video(frames, save_path , fps=8)
     
