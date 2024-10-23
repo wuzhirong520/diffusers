@@ -16,47 +16,67 @@ from transformers import AutoTokenizer, T5EncoderModel, T5Tokenizer
 
 from safetensors.torch import load_file
 
-pretrained_model_name_or_path = "THUDM/CogVideoX-2b"
+"""
+load pipe for 2B finetuned
+"""
 
-tokenizer = AutoTokenizer.from_pretrained(
-        pretrained_model_name_or_path, subfolder="tokenizer", revision=None, 
-        torch_dtype=torch.float16,
-    )
+# pretrained_model_name_or_path = "THUDM/CogVideoX-2b"
 
-text_encoder = T5EncoderModel.from_pretrained(
-    pretrained_model_name_or_path, subfolder="text_encoder", revision=None,
-    torch_dtype=torch.float16,
+# tokenizer = AutoTokenizer.from_pretrained(
+#         pretrained_model_name_or_path, subfolder="tokenizer", revision=None, 
+#         torch_dtype=torch.float16,
+#     )
+
+# text_encoder = T5EncoderModel.from_pretrained(
+#     pretrained_model_name_or_path, subfolder="text_encoder", revision=None,
+#     torch_dtype=torch.float16,
+# )
+
+# transformer = CogVideoXTransformer3DModel.from_pretrained(
+#         "/root/autodl-fs/cogvideox-D4-clean-image-sft/1022",
+#         torch_dtype=torch.float16,
+#         revision=None,
+#         variant=None,
+#         # in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
+#     )
+
+# vae = AutoencoderKLCogVideoX.from_pretrained(
+#         pretrained_model_name_or_path, subfolder="vae", revision=None, variant=None,
+#         torch_dtype=torch.float16,
+#     )
+
+# scheduler = CogVideoXDPMScheduler.from_pretrained(pretrained_model_name_or_path, subfolder="scheduler",)
+
+# components = {
+#             "transformer": transformer,
+#             "vae": vae,
+#             "scheduler": scheduler,
+#             "text_encoder": text_encoder,
+#             "tokenizer": tokenizer,
+#         }
+
+# pipe = CogVideoXImageToVideoPipeline(**components)
+
+"""
+load 5B-I2V baseline pipe
+"""
+pipe = CogVideoXImageToVideoPipeline.from_pretrained(
+    "THUDM/CogVideoX-5b-I2V",
+    torch_dtype=torch.bfloat16
 )
 
-transformer = CogVideoXTransformer3DModel.from_pretrained(
-        "/root/autodl-fs/cogvideox-D4-clean-image-sft/1022",
-        torch_dtype=torch.float16,
-        revision=None,
-        variant=None,
-        # in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
-    )
-
-vae = AutoencoderKLCogVideoX.from_pretrained(
-        pretrained_model_name_or_path, subfolder="vae", revision=None, variant=None,
-        torch_dtype=torch.float16,
-    )
-
-scheduler = CogVideoXDPMScheduler.from_pretrained(pretrained_model_name_or_path, subfolder="scheduler",)
-
-components = {
-            "transformer": transformer,
-            "vae": vae,
-            "scheduler": scheduler,
-            "text_encoder": text_encoder,
-            "tokenizer": tokenizer,
-        }
-
-pipe = CogVideoXImageToVideoPipeline(**components).to("cuda")
-# pipe.enable_model_cpu_offload()
+# pipe.to("cuda")
+pipe.enable_model_cpu_offload()
+# pipe.enable_sequential_cpu_offload()
 pipe.vae.enable_slicing()
 pipe.vae.enable_tiling()
 
 print('Pipeline loaded!')
+
+# prompt = "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
+# image = load_image("/root/PKU/diffusers/wzr_example/astronaut.jpg")
+# video = pipe(image, prompt, guidance_scale=6, use_dynamic_cfg=True, num_frames=49)
+# export_to_video(video.frames[0], "output.mp4", fps=8)
 
 # while True:
 #     image_path = input("image_path: ")
@@ -79,57 +99,59 @@ print('Pipeline loaded!')
 '''
 infer vista demos
 '''
-# import decord
-# import PIL.Image
-# decord.bridge.set_bridge("torch")
+import decord
+import PIL.Image
+decord.bridge.set_bridge("torch")
 
-# # vista_actions = ["right","left","stop","forward", "right", "left"]
-# # actions = ["turn right","turn left","wait","go straight", "sharp right turn","sharp left turn"]
-# # vista_actions = ["left", "left"]
-# # actions = ["turn left", "sharp left turn"]
-# vista_actions = ["left","left","left","right","right","right","forward","forward","forward","forward","forward","forward","stop"]
-# actions = ["shift slightly to the left",
-#            "sharp left turn",
-#            "follow the road left",
+# vista_actions = ["right","left","stop","forward", "right", "left"]
+# actions = ["turn right","turn left","wait","go straight", "sharp right turn","sharp left turn"]
+# vista_actions = ["left", "left"]
+# actions = ["turn left", "sharp left turn"]
+vista_actions = ["left","left","left","right","right","right","forward","forward","forward","forward","forward","forward","stop"]
+actions = ["shift slightly to the left",
+           "sharp left turn",
+           "follow the road left",
 
-#            "shift slightly to the right",
-#            "sharp right turn",
-#            "follow the road right",
+           "shift slightly to the right",
+           "sharp right turn",
+           "follow the road right",
 
-#            "go straight",
-#            "maintain speed",
-#            "speed up",
-#            "slow down",
-#            "drive fast",
-#            "drive slowly",
-#            "wait"
-#            ]
-# demos_per_action = 10
-# vista_demo_path = "/root/autodl-fs/vista_demos"
-# infer_path = "./val1022"
+           "go straight",
+           "maintain speed",
+           "speed up",
+           "slow down",
+           "drive fast",
+           "drive slowly",
+           "wait"
+           ]
+demos_per_action = 10
+vista_demo_path = "/root/autodl-fs/vista_demos"
+infer_path = "./val_5B_I2V"
 
-# os.makedirs(infer_path, exist_ok=True)
+os.makedirs(infer_path, exist_ok=True)
 
-# for video_id in range(1, demos_per_action+1):
-#     for action_id in range(len(actions)) :
-#         save_path = os.path.join(infer_path, f"{actions[action_id]}-{video_id}.mp4")
-#         if os.path.exists(save_path):
-#             continue
-#         vista_video_path = os.path.join(vista_demo_path, f"{vista_actions[action_id]}-{video_id}.mp4")
-#         image = decord.VideoReader(vista_video_path, width=720, height=480).get_batch([0]).squeeze(0)
-#         image = PIL.Image.fromarray(image.numpy())
-#         prompt = actions[action_id]
-#         pipeline_args = {
-#             "image": image,
-#             "prompt": prompt,
-#             "guidance_scale": 6,
-#             "use_dynamic_cfg": True,
-#             "height": 480,
-#             "width": 720,
-#             "num_frames": 33
-#         }
-#         frames = pipe(**pipeline_args).frames[0]
-#         export_to_video(frames,save_path , fps=8)
+for video_id in range(1, demos_per_action+1):
+    if video_id!=3:
+        continue
+    for action_id in range(len(actions)) :
+        save_path = os.path.join(infer_path, f"{actions[action_id]}-{video_id}.mp4")
+        if os.path.exists(save_path):
+            continue
+        vista_video_path = os.path.join(vista_demo_path, f"{vista_actions[action_id]}-{video_id}.mp4")
+        image = decord.VideoReader(vista_video_path, width=720, height=480).get_batch([0]).squeeze(0)
+        image = PIL.Image.fromarray(image.numpy())
+        prompt = actions[action_id]
+        pipeline_args = {
+            "image": image,
+            "prompt": prompt,
+            "guidance_scale": 6,
+            "use_dynamic_cfg": True,
+            "height": 480,
+            "width": 720,
+            "num_frames": 49
+        }
+        frames = pipe(**pipeline_args).frames[0]
+        export_to_video(frames,save_path , fps=8)
 
 
 '''
@@ -160,7 +182,7 @@ val_dataset = NuscenesDatasetForCogvidx(
         split="val",
         preload_all_data=False)
 
-infer_path = "./val1022"
+infer_path = "./val_5B_I2V"
 
 os.makedirs(infer_path, exist_ok=True)
 
@@ -174,8 +196,8 @@ height = 480
 
 for i in range(len(val_dataset)):
     scene_name = val_dataset.scenes[i]
-    # if scene_name!='scene-0013':
-    #     continue
+    if scene_name!='scene-0016':
+        continue
     print(scene_name)
     frames = [image2pil(path) for path in val_dataset.frames_group[scene_name][:num_frames]]
     frames = [img.resize((width, height)) for img in frames]
@@ -230,7 +252,7 @@ for i in range(len(val_dataset)):
             "use_dynamic_cfg": True,
             "height": 480,
             "width": 720,
-            "num_frames": 33
+            "num_frames": 49
         }
         frames = pipe(**pipeline_args).frames[0]
 
