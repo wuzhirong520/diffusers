@@ -30,13 +30,14 @@ def get_frames(filename):
 
 import torch
 
-scenes = ['0003',"0012","0013","0014","0015","0016","0017","0018"]
+# scenes = ['0003',"0012","0013","0014","0015","0016","0017","0018"]
 
-for idx in range(0,8):
+for idx in range(1, 15):
     videos=[]
     for action in actions:
         # video = get_frames(f"/root/PKU/diffusers/wzr_example/Infer/val1022_vista/{idx}-{action}.mp4")
-        video = get_frames(f"/root/PKU/diffusers/wzr_example/Infer/val1022/scene-{scenes[idx]}_{action}.mp4".replace(' ','_'))
+        # video = get_frames(f"/root/PKU/diffusers/wzr_example/Infer/val1022/scene-{scenes[idx]}_{action}.mp4".replace(' ','_'))
+        video = get_frames(f"/root/PKU/diffusers/wzr_example/Infer/val_campus/{action}-{idx}.mp4")
         videos.append(video)
 
     padding = torch.zeros_like(videos[0])
@@ -62,4 +63,5 @@ for idx in range(0,8):
     from diffusers.utils import export_to_video
 
     # export_to_video(frames, f"/root/PKU/diffusers/wzr_example/Infer/val1022_vista/{idx}.mp4",fps=8)
-    export_to_video(frames, f"/root/PKU/diffusers/wzr_example/Infer/scene-{scenes[idx]}.mp4",fps=8)
+    # export_to_video(frames, f"/root/PKU/diffusers/wzr_example/Infer/scene-{scenes[idx]}.mp4",fps=8)
+    export_to_video(frames, f"/root/PKU/diffusers/wzr_example/Infer/val_campus_all/{idx}.mp4",fps=8)
