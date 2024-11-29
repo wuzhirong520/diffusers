@@ -72,10 +72,11 @@ import PIL.ImageDraw
 import decord
 decord.bridge.set_bridge("torch")
 
-output_folder = "/data/wuzhirong/val/cond_sft_1500"
+output_folder = "/data/wuzhirong/val/cond_sft_3100"
+os.makedirs(output_folder,exist_ok=True)
 
 from load_pipeline import LoadPipeline
-pipe = LoadPipeline("/data/wuzhirong/ckpts/cogvideox-sft-test/checkpoint-1800/transformer").to("cuda")
+pipe = LoadPipeline("/data/wuzhirong/ckpts/cogvideox-sft-test/checkpoint-3100/transformer").to("cuda")
 print('Pipeline loaded!')
 
 from nuscenes_dataset import NuscenesDatasetForCogvidx
@@ -102,7 +103,7 @@ def visualizeCondition(image:PIL.Image, cond_dict:dict, index:int)->PIL.Image:
         speed = cond_dict["speed"][index//6 if index<24 else 3] 
         image_draw.text((20,20),f"speed : {speed}",(0,0,255),PIL.ImageFont.load_default(30))
     if "angle" in cond_dict.keys():
-        angle = cond_dict["angle"][index//6 if index<24 else 3]*780
+        angle = cond_dict["angle"][index//6 if index<24 else 3]
         image_draw.text((20,70),f"angle : {angle:.3f}",(0,0,255),PIL.ImageFont.load_default(30))
     return image_new
 
@@ -154,7 +155,6 @@ for i in tqdm(range(0, len(val_dataset))):
                 continue
             cond_name="none"
     
-        cond = cond_dict.__str__().replace("'","\"")
         
         # video_new = [visualizeCondition(v,cond_dict,i) for i,v in enumerate(video)]
         # export_to_video(video_new, os.path.join(output_folder, f"test_video_{i:05}_{cond_name}.mp4"), fps=10)
@@ -165,6 +165,7 @@ for i in tqdm(range(0, len(val_dataset))):
         #     f.write(cond+"\n")
         # continue
 
+        cond = cond_dict.__str__().replace("'","\"")
         pipeline_args = {
             "image": video[0],
             "prompt": prompt,
@@ -175,7 +176,6 @@ for i in tqdm(range(0, len(val_dataset))):
             "width": 720,
             "num_frames": 25
         }
-
         with torch.no_grad():
             gen_video = pipe(**pipeline_args).frames[0]
             gen_video = [visualizeCondition(v,cond_dict,i) for i,v in enumerate(gen_video)]
@@ -187,3 +187,39 @@ for i in tqdm(range(0, len(val_dataset))):
             cat_video = [PIL.Image.fromarray(cat_video_tensor[idx].numpy()) for idx in range(cat_video_tensor.shape[0])]
 
             export_to_video(cat_video, os.path.join(output_folder, f"video_{i:05}_{cond_name}.mp4"), fps=10)
+
+        if action_mod!=3:
+            if action_mod==0:
+                cond_dict["trajectory"][0]*=-1
+                cond_dict["trajectory"][2]*=-1
+                cond_dict["trajectory"][4]*=-1
+                cond_dict["trajectory"][6]*=-1
+            elif action_mod==1:
+                cond_dict["angle"][0]*=-1
+                cond_dict["angle"][1]*=-1
+                cond_dict["angle"][2]*=-1
+                cond_dict["angle"][3]*=-1
+            elif action_mod==2:
+                cond_dict["goal"][0]=1-cond_dict["goal"][0]
+            cond = cond_dict.__str__().replace("'","\"")
+            pipeline_args = {
+                "image": video[0],
+                "prompt": prompt,
+                "cond":cond,
+                "guidance_scale": 0,
+                "use_dynamic_cfg": False,
+                "height": 480,
+                "width": 720,
+                "num_frames": 25
+            }
+            with torch.no_grad():
+                gen_video = pipe(**pipeline_args).frames[0]
+                gen_video = [visualizeCondition(v,cond_dict,i) for i,v in enumerate(gen_video)]
+                raw_video = [visualizeCondition(v,cond_dict,i) for i,v in enumerate(video)]
+                video_tensor = torch.stack([torch.tensor(np.array(v)) for v in raw_video])
+
+                gen_video_tensor = torch.stack([torch.tensor(np.array(p)) for p in gen_video])
+                cat_video_tensor = torch.cat([gen_video_tensor,video_tensor],dim=2)
+                cat_video = [PIL.Image.fromarray(cat_video_tensor[idx].numpy()) for idx in range(cat_video_tensor.shape[0])]
+
+                export_to_video(cat_video, os.path.join(output_folder, f"video_{i:05}_{cond_name}_inv.mp4"), fps=10)

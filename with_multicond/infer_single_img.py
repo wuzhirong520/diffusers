@@ -17,56 +17,56 @@ from transformers import AutoTokenizer, T5EncoderModel, T5Tokenizer
 from safetensors.torch import load_file
 
 # # pretrained_model_name_or_path = "THUDM/CogVideoX-2b"
-# pretrained_model_name_or_path = "/data/wuzhirong/hf-models/CogVideoX-2b"
+pretrained_model_name_or_path = "/data/wuzhirong/hf-models/CogVideoX-2b"
 
-# tokenizer = AutoTokenizer.from_pretrained(
-#         pretrained_model_name_or_path, subfolder="tokenizer", revision=None, 
-#         torch_dtype=torch.float16,
-#     )
+tokenizer = AutoTokenizer.from_pretrained(
+        pretrained_model_name_or_path, subfolder="tokenizer", revision=None, 
+        torch_dtype=torch.float16,
+    )
 
-# text_encoder = T5EncoderModel.from_pretrained(
-#     pretrained_model_name_or_path, subfolder="text_encoder", revision=None,
-#     torch_dtype=torch.float16,
-# )
+text_encoder = T5EncoderModel.from_pretrained(
+    pretrained_model_name_or_path, subfolder="text_encoder", revision=None,
+    torch_dtype=torch.float16,
+)
 
-# transformer = CogVideoXTransformer3DModel.from_pretrained(
-#         # "/root/autodl-fs/cogvideox-D4-clean-image-sft/1022",
-#         "/data/wuzhirong/ckpts/cogvideox-D4-clean-image-sft-1022/transformer",
-#         torch_dtype=torch.float16,
-#         revision=None,
-#         variant=None,
-#         # in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
-#     )
+transformer = CogVideoXTransformer3DModel.from_pretrained(
+        # "/root/autodl-fs/cogvideox-D4-clean-image-sft/1022",
+        "/data/wuzhirong/ckpts/cogvideox-D4-clean-image-sft-1022/transformer",
+        torch_dtype=torch.float16,
+        revision=None,
+        variant=None,
+        # in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
+    )
 
-# vae = AutoencoderKLCogVideoX.from_pretrained(
-#         pretrained_model_name_or_path, subfolder="vae", revision=None, variant=None,
-#         torch_dtype=torch.float16,
-#     )
+vae = AutoencoderKLCogVideoX.from_pretrained(
+        pretrained_model_name_or_path, subfolder="vae", revision=None, variant=None,
+        torch_dtype=torch.float16,
+    )
 
-# scheduler = CogVideoXDPMScheduler.from_pretrained(pretrained_model_name_or_path, subfolder="scheduler",)
+scheduler = CogVideoXDPMScheduler.from_pretrained(pretrained_model_name_or_path, subfolder="scheduler",)
 
-# components = {
-#             "transformer": transformer,
-#             "vae": vae,
-#             "scheduler": scheduler,
-#             "text_encoder": text_encoder,
-#             "tokenizer": tokenizer,
-#         }
+components = {
+            "transformer": transformer,
+            "vae": vae,
+            "scheduler": scheduler,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+        }
 
-# pipe = CogVideoXImageToVideoPipeline(**components)
+pipe = CogVideoXImageToVideoPipeline(**components)
 
-# pipe.to("cuda")
-# # pipe.enable_model_cpu_offload()
-# # pipe.enable_sequential_cpu_offload()
-# pipe.vae.enable_slicing()
-# pipe.vae.enable_tiling()
-from load_pipeline import LoadPipelineLora
-pipe = LoadPipelineLora("")
-print('Pipeline loaded!')
+pipe.to("cuda")
+# pipe.enable_model_cpu_offload()
+# pipe.enable_sequential_cpu_offload()
+pipe.vae.enable_slicing()
+pipe.vae.enable_tiling()
+# from load_pipeline import LoadPipelineLora
+# pipe = LoadPipelineLora("")
+# print('Pipeline loaded!')
 
 
-image = load_image("../../campus/9.jpg")
-prompt = "go straight"
+image = load_image("/data/wuzhirong/datasets/Nuscenes/samples/CAM_FRONT/n015-2018-10-08-15-36-50+0800__CAM_FRONT__1538984233512470.jpg")
+prompt = "sharp right turn"
 
 pipeline_args = {
     "image": image,
