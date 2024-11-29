@@ -73,7 +73,7 @@ class Conditioner(nn.Module):
         self.action_emb_dim = action_emb_dim
         self.emb_models={
             "trajectory":ConcatTimestepEmbedderND(action_emb_dim, 8, True),
-            "command":ConcatTimestepEmbedderND(action_emb_dim, 1, True),
+            # "command":ConcatTimestepEmbedderND(action_emb_dim, 1, True),
             "speed":ConcatTimestepEmbedderND(action_emb_dim, 4, True),
             "angle":ConcatTimestepEmbedderND(action_emb_dim, 4, True),
             "goal":ConcatTimestepEmbedderND(action_emb_dim, 2, True),
@@ -92,6 +92,6 @@ class Conditioner(nn.Module):
         embs = torch.cat(embs, dim=2)
         # print(embs.shape)
         # embs = embs.repeat(1,226,1)
-        embs = embs.reshape(1,19,self.action_emb_dim)
+        embs = embs.reshape(1,18,self.action_emb_dim).repeat(1,1,32)
         # print(embs.shape)
         return embs

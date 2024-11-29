@@ -34,6 +34,7 @@ class NuscenesDatasetForCogvidx(Dataset):
         width: int = 720,
         split: str = "train",
         encode_video = None,
+        encode_prompt = None,
     ) -> None:
         super().__init__()
         self.data_root = data_root
@@ -41,6 +42,7 @@ class NuscenesDatasetForCogvidx(Dataset):
         self.width = width
         self.split = split
         self.encode_video=encode_video
+        self.encode_prompt=encode_prompt
 
         if self.split == "train":
             anno_path = os.path.join(data_root, "vista_anno/nuScenes.json")
@@ -53,7 +55,7 @@ class NuscenesDatasetForCogvidx(Dataset):
             self.anno = json.load(f)
         
         self.action_mod = 0
-        self.encode_prompt = Conditioner()
+        self.encode_condition = Conditioner()
     
     def __len__(self):
         return len(self.anno)
@@ -67,19 +69,29 @@ class NuscenesDatasetForCogvidx(Dataset):
         frames = frames.permute(0, 3, 1, 2) # [F, C, H, W]
         frames = resize(frames,size=[self.height, self.width],interpolation=InterpolationMode.BICUBIC)
 
+        if scene["cmd"]==0:
+            prompt = "sharp right turn"
+        elif scene["cmd"]==1:
+            prompt = "sharp left turn"
+        elif scene["cmd"]==2:
+            prompt = "wait"
+        elif scene["cmd"]==3:
+            prompt = "go straight"
+        else:
+            raise ValueError
+
+
         cond_dict = {}
         if self.action_mod == 0:
             cond_dict["trajectory"] = torch.tensor(scene["traj"][2:])
         elif self.action_mod == 1:
-            cond_dict["command"] = torch.tensor(scene["cmd"])
-        elif self.action_mod == 2:
             # scene might be empty
             if scene["speed"]:
                 cond_dict["speed"] = torch.tensor(scene["speed"][1:])
             # scene might be empty
             if scene["angle"]:
                 cond_dict["angle"] = torch.tensor(scene["angle"][1:]) / 780
-        elif self.action_mod == 3:
+        elif self.action_mod == 2:
             # point might be invalid
             if scene["z"] > 0 and 0 < scene["goal"][0] < 1600 and 0 < scene["goal"][1] < 900:
                 cond_dict["goal"] = torch.tensor([
@@ -94,20 +106,23 @@ class NuscenesDatasetForCogvidx(Dataset):
 
         # print(cond_dict)
 
-        return cond_dict, frames
+        return prompt, cond_dict, frames
 
-    def encode(self, prompt, video):
+    def encode(self, prompt, cond, video):
         prompt = self.encode_prompt(prompt).to("cpu")
+        cond = self.encode_condition(cond).to("cpu")
+        prompt = torch.cat([prompt,cond],dim=1)
         if self.encode_video is not None:
             v1,v2 = self.encode_video(video)
             video = (v1.sample().to("cpu"),v2.sample().to("cpu"))
         return prompt, video
         
     def __getitem__(self, index):
-        prompt, video = self.load_sample(index)
-        prompt, video = self.encode(prompt, video)
+        prompt, cond, video = self.load_sample(index)
+        if self.split=="train":
+            prompt, video = self.encode(prompt, cond, video)
 
-        self.action_mod = (self.action_mod + index) % 4
+        self.action_mod = (self.action_mod + 1) % 3
         return {
             "instance_prompt": prompt,
             "instance_video": video,

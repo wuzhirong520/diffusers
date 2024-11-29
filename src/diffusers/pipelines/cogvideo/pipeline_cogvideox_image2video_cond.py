@@ -560,6 +560,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         self,
         image: PipelineImageInput,
         prompt: Optional[Union[str, List[str]]] = None,
+        cond: Optional[Union[str, List[str]]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 480,
         width: int = 720,
@@ -702,23 +703,27 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
 
         # 3. Encode input prompt
 
-        # prompt_embeds, negative_prompt_embeds = self.encode_prompt(
-        #     prompt=prompt,
-        #     negative_prompt=negative_prompt,
-        #     do_classifier_free_guidance=do_classifier_free_guidance,
-        #     num_videos_per_prompt=num_videos_per_prompt,
-        #     prompt_embeds=prompt_embeds,
-        #     negative_prompt_embeds=negative_prompt_embeds,
-        #     max_sequence_length=max_sequence_length,
-        #     device=device,
-        # )
-        prompt = json.loads(prompt)
-        for k in prompt.keys():
-            prompt[k] = torch.tensor(prompt[k]).unsqueeze(0)
-        prompt_embeds = self.conditioner(prompt).to(dtype=self.text_encoder.dtype).to(device)
-        negative_prompt_embeds = torch.zeros_like(prompt_embeds, dtype=self.text_encoder.dtype, device=device)
+        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+            num_videos_per_prompt=num_videos_per_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            max_sequence_length=max_sequence_length,
+            device=device,
+        )
+        print(cond)
+        cond = json.loads(cond)
+        for k in cond.keys():
+            cond[k] = torch.tensor(cond[k]).unsqueeze(0)
+        cond_embeds = self.conditioner(cond).to(dtype=self.text_encoder.dtype).to(device)
+        negative_cond_embeds = torch.zeros_like(cond_embeds, dtype=self.text_encoder.dtype, device=device)
 
+        prompt_embeds=torch.cat([prompt_embeds, cond_embeds],dim=1)
+        
         if do_classifier_free_guidance:
+            negative_prompt_embeds=torch.cat([negative_prompt_embeds, negative_cond_embeds],dim=1)
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
         # 4. Prepare timesteps

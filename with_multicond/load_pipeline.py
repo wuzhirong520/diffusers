@@ -14,38 +14,33 @@
 
 import os
 os.environ['HF_ENDPOINT']='https://hf-mirror.com'
-os.environ['HUGGINGFACE_HUB_CACHE']="/root/autodl-fs/huggingface/hub"
+# os.environ['HUGGINGFACE_HUB_CACHE']="/root/autodl-fs/huggingface/hub"
 import sys
-sys.path.append("/root/PKU/diffusers/src")
+sys.path.append("../src")
 import diffusers
 from diffusers import (
     AutoencoderKLCogVideoX,
     CogVideoXDPMScheduler,
-    CogVideoXImageToVideoPipeline,
+    # CogVideoXImageToVideoPipeline,
     CogVideoXTransformer3DModel,
 )
 import torch
+from diffusers.pipelines.cogvideo.pipeline_cogvideox_image2video_cond import CogVideoXImageToVideoPipeline
 
-# from safetensors.torch import load_file
-# p = load_file("/root/autodl-tmp/cogvideox-lora-single-node_test_full_withembedtrain/checkpoint-10/pytorch_lora_weights.safetensors")
-# print(p.keys())
-# exit(0)
-
-def LoadCogvidx2BI2VFintuned(lora_weight_path):
+def LoadPipelineLora(lora_weight_path):
 
     transformer = CogVideoXTransformer3DModel.from_pretrained(
-        "THUDM/CogVideoX-2b",
-        subfolder="transformer",
+        "/data/wuzhirong/ckpts/base_transformer_cond",
         torch_dtype=torch.float16,
-        in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
+        low_cpu_mem_usage=False, ignore_mismatched_sizes=True
     )
 
     pipe = CogVideoXImageToVideoPipeline.from_pretrained(
-        "THUDM/CogVideoX-2b",
+        "/data/wuzhirong/hf-models/CogVideoX-2b",
         torch_dtype=torch.float16,
         transformer=transformer
     )
-    # ).to("cuda")
+
     pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config,)
 
     # Load LoRA weights
@@ -56,9 +51,33 @@ def LoadCogvidx2BI2VFintuned(lora_weight_path):
     pipe.set_adapters(["cogvideox-i2v-lora"], [lora_scaling])
 
     from safetensors.torch import load_file
-    transformer_patch_embed_proj = load_file(os.path.join(lora_weight_path,"transformer_patch_embed_proj.safetensors"))
-    transformer.patch_embed.proj.weight.data = transformer_patch_embed_proj['transformer.patch_embed.proj.weight'].to(torch.float16)
-    transformer.patch_embed.proj.bias.data = transformer_patch_embed_proj['transformer.patch_embed.proj.bias'].to(torch.float16)
+    transformer_patch_embed_text_proj = load_file(os.path.join(lora_weight_path, "transformer_patch_embed_text_proj.safetensors"))
+    transformer.patch_embed.text_proj.weight.data = transformer_patch_embed_text_proj['transformer.patch_embed.text_proj.weight'].to(torch.float16)
+    transformer.patch_embed.text_proj.bias.data = transformer_patch_embed_text_proj['transformer.patch_embed.text_proj.bias'].to(torch.float16)
+
+    # pipe.enable_model_cpu_offload()
+    # pipe.enable_sequential_cpu_offload()
+    pipe.vae.enable_slicing()
+    pipe.vae.enable_tiling()
+
+    return pipe
+
+
+def LoadPipeline(tranformer_path):
+
+    transformer = CogVideoXTransformer3DModel.from_pretrained(
+        tranformer_path,
+        torch_dtype=torch.float16,
+        low_cpu_mem_usage=False, ignore_mismatched_sizes=True
+    )
+
+    pipe = CogVideoXImageToVideoPipeline.from_pretrained(
+        "/data/wuzhirong/hf-models/CogVideoX-2b",
+        torch_dtype=torch.float16,
+        transformer=transformer
+    )
+
+    pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config,)
 
     # pipe.enable_model_cpu_offload()
     # pipe.enable_sequential_cpu_offload()

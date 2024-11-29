@@ -24,6 +24,8 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import transformers
+import accelerate
+from accelerate.state import AcceleratorState
 from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, InitProcessGroupKwargs, ProjectConfiguration, set_seed
@@ -33,9 +35,11 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, T5EncoderModel, T5Tokenizer
+from transformers.utils import ContextManagers
 
 import sys
-sys.path.append("/root/PKU/diffusers/src")
+sys.path.append("../src")
+
 import diffusers
 from diffusers import (
     AutoencoderKLCogVideoX,
@@ -62,9 +66,8 @@ import torchvision.transforms as TT
 import numpy as np
 from diffusers.image_processor import VaeImageProcessor
 
-# from nuscenes_dataset_for_cogvidx import NuscenesDatasetForCogvidx
+# from nuscenes_dataset_for_cogvidx import NuscenesDatasetAllframesForCogvidx
 from diffusers.pipelines.cogvideo.pipeline_cogvideox_image2video_cond import CogVideoXImageToVideoPipeline
-
 
 if is_wandb_available():
     import wandb
@@ -126,7 +129,7 @@ def get_args():
     parser.add_argument(
         "--instance_data_root",
         type=str,
-        default=None,
+        default="/data/wangxd/nuscenes",
         help=("A folder containing the training data."),
     )
     parser.add_argument(
@@ -227,7 +230,7 @@ def get_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="cogvideox-i2v-lora",
+        default="cogvideox-i2v-sft",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -364,6 +367,12 @@ def get_args():
         default=0.05,
         help="Image condition dropout probability.",
     )
+    parser.add_argument(
+        "--denoised_image",
+        action="store_true",
+        default=False,
+        help="use the clean first image",
+    )
 
     # Optimizer
     parser.add_argument(
@@ -433,7 +442,7 @@ def get_args():
     parser.add_argument(
         "--report_to",
         type=str,
-        default=None,
+        default="wandb",
         help=(
             'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
             ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
@@ -577,12 +586,17 @@ def log_validation(
             video_filenames = []
             for i, video in enumerate(videos):
                 prompt = (
-                    pipeline_args["prompt"][:25]
+                    (pipeline_args["prompt"][:25]+pipeline_args["cond"][:10])
                     .replace(" ", "_")
                     .replace(" ", "_")
                     .replace("'", "_")
                     .replace('"', "_")
                     .replace("/", "_")
+                    .replace("{", "_")
+                    .replace("}", "_")
+                    .replace("[", "_")
+                    .replace("]", "_")
+                    .replace(":", "_")
                 )
                 filename = os.path.join(args.output_dir, f"{phase_name}_video_{epoch}_{i}_{prompt}.mp4")
                 export_to_video(video, filename, fps=10)
@@ -591,7 +605,7 @@ def log_validation(
             tracker.log(
                 {
                     phase_name: [
-                        wandb.Video(filename, caption=f"{i}: {pipeline_args['prompt']}")
+                        wandb.Video(filename, caption=f"{i}: {pipeline_args['prompt']+pipeline_args['cond']}")
                         for i, filename in enumerate(video_filenames)
                     ]
                 }
@@ -869,28 +883,36 @@ def main(args):
     tokenizer = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, 
     )
+    
+    def deepspeed_zero_init_disabled_context_manager():
+        """
+        returns either a context list that includes one that will disable zero.Init or an empty context list
+        """
+        deepspeed_plugin = AcceleratorState().deepspeed_plugin if accelerate.state.is_initialized() else None
+        if deepspeed_plugin is None:
+            return []
 
-    text_encoder = T5EncoderModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, 
-    )
+        return [deepspeed_plugin.zero3_init_context_manager(enable=False)]
+    
+    with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
+        text_encoder = T5EncoderModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, 
+        )
+        vae = AutoencoderKLCogVideoX.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant, 
+        )
 
     # CogVideoX-2b weights are stored in float16
     # CogVideoX-5b and CogVideoX-5b-I2V weights are stored in bfloat16
     load_dtype = torch.bfloat16 if "5b" in args.pretrained_model_name_or_path.lower() else torch.float16
     transformer = CogVideoXTransformer3DModel.from_pretrained(
-        # args.pretrained_model_name_or_path,
-        # subfolder="transformer",
-        "/root/autodl-fs/ckpt/base_transformer_cond",
+        "/data/wuzhirong/ckpts/base_transformer_cond",
         torch_dtype=load_dtype,
         revision=args.revision,
         variant=args.variant,
         low_cpu_mem_usage=False, ignore_mismatched_sizes=True
     )
-
-    vae = AutoencoderKLCogVideoX.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant, 
-    )
-
+    
     scheduler = CogVideoXDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler",)
 
     if args.enable_slicing:
@@ -900,8 +922,8 @@ def main(args):
 
     # We only train the additional adapter LoRA layers
     text_encoder.requires_grad_(False)
-    transformer.requires_grad_(False)
     vae.requires_grad_(False)
+    transformer.requires_grad_(True)
 
     # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
@@ -917,12 +939,14 @@ def main(args):
             "bf16" in accelerator.state.deepspeed_plugin.deepspeed_config
             and accelerator.state.deepspeed_plugin.deepspeed_config["bf16"]["enabled"]
         ):
-            weight_dtype = torch.float16
+            weight_dtype = torch.bfloat16
     else:
         if accelerator.mixed_precision == "fp16":
             weight_dtype = torch.float16
+            args.mixed_precision = accelerator.mixed_precision 
         elif accelerator.mixed_precision == "bf16":
             weight_dtype = torch.bfloat16
+            args.mixed_precision = accelerator.mixed_precision 
 
     if torch.backends.mps.is_available() and weight_dtype == torch.bfloat16:
         # due to pytorch#99272, MPS does not yet support bfloat16.
@@ -933,21 +957,11 @@ def main(args):
     text_encoder.to(accelerator.device, dtype=weight_dtype)
     transformer.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
+    
+    transformer.train()
 
     if args.gradient_checkpointing:
         transformer.enable_gradient_checkpointing()
-
-    # now we will add new LoRA weights to the attention layers
-    transformer_lora_config = LoraConfig(
-        r=args.rank,
-        lora_alpha=args.lora_alpha,
-        init_lora_weights=True,
-        target_modules=["to_k", "to_q", "to_v", "to_out.0"],
-    )
-    transformer.add_adapter(transformer_lora_config)
-
-    # print(transformer)
-    # exit(0)
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -957,24 +971,17 @@ def main(args):
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
         if accelerator.is_main_process:
-            transformer_lora_layers_to_save = None
-
             for model in models:
                 if accelerator.distributed_type == DistributedType.DEEPSPEED:
                     model = unwrap_model(model)
                 if isinstance(model, type(unwrap_model(transformer))):
-                    transformer_lora_layers_to_save = get_peft_model_state_dict(model)
+                    model.save_pretrained(os.path.join(output_dir, "transformer"))
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
                 if accelerator.distributed_type != DistributedType.DEEPSPEED:
                     # make sure to pop weight so that corresponding model is not saved again
                     weights.pop()
-
-            CogVideoXImageToVideoPipeline.save_lora_weights(
-                output_dir,
-                transformer_lora_layers=transformer_lora_layers_to_save,
-            )
 
     def load_model_hook(models, input_dir):
         transformer_ = None
@@ -986,22 +993,12 @@ def main(args):
                 transformer_ = model
             else:
                 raise ValueError(f"Unexpected save model: {model.__class__}")
-
-        lora_state_dict = CogVideoXImageToVideoPipeline.lora_state_dict(input_dir)
-
-        transformer_state_dict = {
-            f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("transformer.")
-        }
-        transformer_state_dict = convert_unet_state_dict_to_peft(transformer_state_dict)
-        incompatible_keys = set_peft_model_state_dict(transformer_, transformer_state_dict, adapter_name="default")
-        if incompatible_keys is not None:
-            # check only for unexpected keys
-            unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
-            if unexpected_keys:
-                logger.warning(
-                    f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
-                    f" {unexpected_keys}. "
-                )
+        
+        load_model = CogVideoXTransformer3DModel.from_pretrained(input_dir, subfolder="transformer")
+        transformer_.register_to_config(**load_model.config)
+        
+        transformer_.load_state_dict(load_model.state_dict())
+        del load_model
 
         # Make sure the trainable params are in float32. This is again needed since the base models
         # are in `weight_dtype`. More details:
@@ -1023,21 +1020,19 @@ def main(args):
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
-    ### !!!! train transformer.patch_embed.proj
-    # transformer.patch_embed.proj.weight.requires_grad_(True)
-    # transformer.patch_embed.proj.bias.requires_grad_(True)
-
-    transformer.patch_embed.text_proj.requires_grad_(True)
 
     # Make sure the trainable params are in float32.
     if args.mixed_precision == "fp16":
         # only upcast trainable parameters (LoRA) into fp32
         cast_training_params([transformer], dtype=torch.float32)
     
-    transformer_lora_parameters = list(filter(lambda p: p.requires_grad, transformer.parameters()))
+    # trainable_parameters = list(filter(lambda p: p.requires_grad, transformer.parameters()))
+    trainable_parameters = list(transformer.parameters())
+
+    # import pdb; pdb.set_trace()
 
     # Optimization parameters
-    transformer_parameters_with_lr = {"params": transformer_lora_parameters, "lr": args.learning_rate}
+    transformer_parameters_with_lr = {"params": trainable_parameters, "lr": args.learning_rate}
     params_to_optimize = [transformer_parameters_with_lr]
 
     use_deepspeed_optimizer = (
@@ -1061,6 +1056,8 @@ def main(args):
         image_noise_sigma = torch.normal(mean=-3.0, std=0.5, size=(1,), device=image.device)
         image_noise_sigma = torch.exp(image_noise_sigma).to(dtype=image.dtype)
         noisy_image = torch.randn_like(image) * image_noise_sigma[:, None, None, None, None] + image
+        if args.denoised_image:
+            noisy_image = image
         image_latent_dist = vae.encode(noisy_image).latent_dist
 
         return latent_dist, image_latent_dist
@@ -1070,14 +1067,15 @@ def main(args):
             tokenizer,
             text_encoder,
             [prompt],
-            unwrap_model(transformer).config.max_text_seq_length,
+            # unwrap_model(transformer).config.max_text_seq_length,
+            226,
             accelerator.device,
             weight_dtype,
             requires_grad=False,
         )
     
     # Dataset and DataLoader
-    # train_dataset = NuscenesDatasetForCogvidx(
+    # train_dataset = NuscenesDatasetAllframesForCogvidx(
     #     data_root=args.instance_data_root,
     #     height=args.height,
     #     width=args.width,
@@ -1085,17 +1083,13 @@ def main(args):
     #     encode_video=encode_video,
     #     encode_prompt=encode_prompt
     # )
-    # # print(train_dataset[0])
-    # print(train_dataset[0]["instance_prompt"].shape)
-    # # print(len(train_dataset[0]["instance_video"]))
-    # # print(train_dataset[0]["instance_video"][0].shape)
-    # exit(0)
     from nuscenes_dataset import NuscenesDatasetForCogvidx
     train_dataset = NuscenesDatasetForCogvidx(
         data_root=args.instance_data_root,
         height=args.height,
         width=args.width,
         encode_video=encode_video,
+        encode_prompt=encode_prompt,
     )
 
 
@@ -1118,7 +1112,7 @@ def main(args):
 
             padding_shape = (video_latents.shape[0], video_latents.shape[1] - 1, *video_latents.shape[2:])
             latent_padding = image_latents.new_zeros(padding_shape)
-            image_latents = torch.cat([image_latents, latent_padding], dim=1)
+            image_latents = torch.cat([image_latents, latent_padding], dim=1) # copy and repeat
 
             if random.random() < args.noised_image_dropout:
                 image_latents = torch.zeros_like(image_latents)
@@ -1188,7 +1182,7 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        tracker_name = args.tracker_name or "cogvideox-i2v-lora"
+        tracker_name = args.tracker_name or "cogvideox-i2v-ft"
         accelerator.init_trackers(tracker_name, config=vars(args))
 
     # Train!
@@ -1228,19 +1222,7 @@ def main(args):
             initial_global_step = 0
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
-            # p1 = unwrap_model(transformer).patch_embed.proj.weight
-            # print(p1)
             accelerator.load_state(os.path.join(args.output_dir, path))
-            from safetensors.torch import load_file
-            transformer_patch_embed_proj = load_file(os.path.join(os.path.join(args.output_dir, path),"transformer_patch_embed_proj.safetensors"))
-            unwrap_model(transformer).patch_embed.proj.weight.data = transformer_patch_embed_proj['transformer.patch_embed.proj.weight']
-            unwrap_model(transformer).patch_embed.proj.bias.data = transformer_patch_embed_proj['transformer.patch_embed.proj.bias']
-            # p2 = unwrap_model(transformer).patch_embed.proj.weight
-            # print(p2)
-            # with torch.no_grad():
-            #     print(torch.mean((p1-p2)**2))
-            # exit(0)
-
             global_step = int(path.split("-")[1])
 
             initial_global_step = global_step
@@ -1270,8 +1252,9 @@ def main(args):
                 video_latents, image_latents = batch["videos"]
                 prompt_embeds = batch["prompts"]
 
+                prompt_embeds = prompt_embeds.to(dtype=weight_dtype)
                 video_latents = video_latents.to(dtype=weight_dtype)  # [B, F, C, H, W]
-                image_latents = image_latents.to(dtype=weight_dtype)  # [B, F, C, H, W]
+                image_latents = image_latents.to(dtype=weight_dtype)  # [B, F, C, H, W], copy and repeat
 
                 batch_size, num_frames, num_channels, height, width = video_latents.shape
 
@@ -1322,11 +1305,20 @@ def main(args):
                 target = video_latents
 
                 loss = torch.mean((weights * (model_pred - target) ** 2).reshape(batch_size, -1), dim=1)
+                
+                # visu conditional loss
+                loss_s = torch.mean((weights * (model_pred[:, 0] - target[:, 0]) ** 2)).detach()
+                loss_m = torch.mean((weights * (model_pred[:, num_frames//2] - target[:, num_frames//2]) ** 2)).detach()
+                loss_e = torch.mean((weights * (model_pred[:, -1] - target[:, -1]) ** 2)).detach()
+                
                 loss = loss.mean()
                 accelerator.backward(loss)
 
                 if accelerator.sync_gradients:
-                    params_to_clip = transformer.parameters()
+                    # params_to_clip = transformer.parameters()
+                    params_to_clip = trainable_parameters
+                    # import pdb; pdb.set_trace()
+                    # print(f"grad: {params_to_clip[0].grad}")
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
 
                 if accelerator.state.deepspeed_plugin is None:
@@ -1365,16 +1357,13 @@ def main(args):
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         
                         accelerator.save_state(save_path)
-
-                        from safetensors.torch import save_file
-                        save_file({
-                                "transformer.patch_embed.text_proj.weight" : unwrap_model(transformer).patch_embed.text_proj.weight,
-                                "transformer.patch_embed.text_proj.bias" : unwrap_model(transformer).patch_embed.text_proj.bias,
-                            }, os.path.join(save_path, "transformer_patch_embed_text_proj.safetensors"))
-
                         logger.info(f"Saved state to {save_path}")
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {"loss": loss.detach().item(),
+                    "loss_s": loss_s.detach().item(),
+                    "loss_m": loss_m.detach().item(),
+                    "loss_e": loss_e.detach().item(),
+                    "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
@@ -1401,23 +1390,32 @@ def main(args):
                     validation_images = args.validation_images.split(args.validation_prompt_separator)
 
                     for validation_image, validation_prompt in zip(validation_images, validation_prompts):
-                        pipeline_args = {
-                            "image": load_image(validation_image),
-                            "prompt": validation_prompt,
-                            "guidance_scale": args.guidance_scale,
-                            "use_dynamic_cfg": args.use_dynamic_cfg,
-                            "height": args.height,
-                            "width": args.width,
-                            "num_frames": args.max_num_frames
-                        }
+                        conds = [
+                            "{\"trajectory\": [-0.10652164640077899,2.9408112292126134,-0.46497039083897107,6.734133841772518,-1.0302032187698842,10.57695285864611,-1.7466546008632804,14.13360700942394]}",
+                            "{\"speed\": [25.7, 26.77, 27.59, 28.31], \"angle\": [0.050128203, 0.051923078, 0.048461538, 0.04179487]}",
+                            "{\"goal\": [0.40695739,0.707478087]}",
+                        ]
+                        for cond in conds:
+                            pipeline_args = {
+                                "image": load_image(validation_image),
+                                "prompt": validation_prompt,
+                                "cond": cond,
+                                "guidance_scale": args.guidance_scale,
+                                "use_dynamic_cfg": args.use_dynamic_cfg,
+                                "height": args.height,
+                                "width": args.width,
+                                "num_frames": args.max_num_frames
+                            }
 
-                        validation_outputs = log_validation(
-                            pipe=pipe,
-                            args=args,
-                            accelerator=accelerator,
-                            pipeline_args=pipeline_args,
-                            epoch=global_step,
-                        )
+                            validation_outputs = log_validation(
+                                pipe=pipe,
+                                args=args,
+                                accelerator=accelerator,
+                                pipeline_args=pipeline_args,
+                                epoch=global_step,
+                            )
+
+
 
     # Save the lora layers
     accelerator.wait_for_everyone()
@@ -1430,25 +1428,23 @@ def main(args):
             if args.mixed_precision == "bf16"
             else torch.float32
         )
-        transformer = transformer.to(dtype)
-        transformer_lora_layers = get_peft_model_state_dict(transformer)
-
-        CogVideoXImageToVideoPipeline.save_lora_weights(
-            save_directory=args.output_dir,
-            transformer_lora_layers=transformer_lora_layers,
-        )
+        
+        transformer.save_pretrained(os.path.join(args.output_dir, 'transformer'))
 
         # Cleanup trained models to save memory
         del transformer
         free_memory()
 
+        # check saved model
         transformer_ = CogVideoXTransformer3DModel.from_pretrained(
-            "/root/autodl-fs/ckpt/base_transformer_cond",
+            args.output_dir,
+            subfolder="transformer",
             torch_dtype=load_dtype,
             revision=args.revision,
             variant=args.variant,
             in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
         )
+        transformer_.to(accelerator.device, dtype=weight_dtype)
 
         # Final test inference
         pipe = CogVideoXImageToVideoPipeline.from_pretrained(
@@ -1460,6 +1456,7 @@ def main(args):
             text_encoder=text_encoder,
             transformer = transformer_
         )
+        
         pipe.enable_model_cpu_offload()
         pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config,)
 
@@ -1468,16 +1465,6 @@ def main(args):
         if args.enable_tiling:
             pipe.vae.enable_tiling()
 
-        # Load LoRA weights
-        lora_scaling = args.lora_alpha / args.rank
-        pipe.load_lora_weights(args.output_dir, adapter_name="cogvideox-i2v-lora")
-        pipe.set_adapters(["cogvideox-i2v-lora"], [lora_scaling])
-
-        from safetensors.torch import load_file
-        transformer_patch_embed_text_proj = load_file(os.path.join(os.path.join(args.output_dir, path),"transformer_patch_embed_text_proj.safetensors"))
-        transformer_.patch_embed.text_proj.weight.data = transformer_patch_embed_text_proj['transformer.patch_embed.text_proj.weight']
-        transformer_.patch_embed.text_proj.bias.data = transformer_patch_embed_text_proj['transformer.patch_embed.text_proj.bias']
-
         # Run inference
         validation_outputs = []
         if args.validation_prompt and args.num_validation_videos > 0:
@@ -1485,25 +1472,32 @@ def main(args):
             validation_images = args.validation_images.split(args.validation_prompt_separator)
 
             for validation_image, validation_prompt in zip(validation_images, validation_prompts):
-                pipeline_args = {
-                    "image": load_image(validation_image),
-                    "prompt": validation_prompt,
-                    "guidance_scale": args.guidance_scale,
-                    "use_dynamic_cfg": args.use_dynamic_cfg,
-                    "height": args.height,
-                    "width": args.width,
-                    "num_frames": args.max_num_frames
-                }
+                conds = [
+                            "{\"trajectory\": [-0.10652164640077899,2.9408112292126134,-0.46497039083897107,6.734133841772518,-1.0302032187698842,10.57695285864611,-1.7466546008632804,14.13360700942394]}",
+                            "{\"speed\": [25.7, 26.77, 27.59, 28.31], \"angle\": [0.050128203, 0.051923078, 0.048461538, 0.04179487]}",
+                            "{\"goal\": [0.40695739,0.707478087]}",
+                        ]
+                for cond in conds:
+                    pipeline_args = {
+                        "image": load_image(validation_image),
+                        "prompt": validation_prompt,
+                        "cond": cond,
+                        "guidance_scale": args.guidance_scale,
+                        "use_dynamic_cfg": args.use_dynamic_cfg,
+                        "height": args.height,
+                        "width": args.width,
+                        "num_frames": args.max_num_frames
+                    }
 
-                video = log_validation(
-                    pipe=pipe,
-                    args=args,
-                    accelerator=accelerator,
-                    pipeline_args=pipeline_args,
-                    epoch=0,
-                    is_final_validation=True,
-                )
-                validation_outputs.extend(video)
+                    video = log_validation(
+                        pipe=pipe,
+                        args=args,
+                        accelerator=accelerator,
+                        pipeline_args=pipeline_args,
+                        epoch=0,
+                        is_final_validation=True,
+                    )
+                    validation_outputs.extend(video)
 
         if args.push_to_hub:
             validation_prompt = args.validation_prompt or ""
