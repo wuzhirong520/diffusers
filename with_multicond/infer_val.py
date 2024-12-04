@@ -72,15 +72,22 @@ import PIL.ImageDraw
 import decord
 decord.bridge.set_bridge("torch")
 
-output_folder = "/data/wuzhirong/val/cond_sft_3100"
+output_folder = "/data/wuzhirong/val/cond_sft_test-1/checkpoint-7600-cfg"
 os.makedirs(output_folder,exist_ok=True)
 
 from load_pipeline import LoadPipeline
-pipe = LoadPipeline("/data/wuzhirong/ckpts/cogvideox-sft-test/checkpoint-3100/transformer").to("cuda")
+pipe = LoadPipeline("/data/wuzhirong/ckpts/cogvideox-sft-test-1/checkpoint-7600/transformer").to("cuda")
 print('Pipeline loaded!')
 
 from nuscenes_dataset import NuscenesDatasetForCogvidx
 val_dataset = NuscenesDatasetForCogvidx("/data/wuzhirong/datasets/Nuscenes",split="val")
+
+# for i in tqdm(range(0, len(val_dataset))):
+#     val_dataset.anno[i]['index']=i
+# import json
+# with open("/data/wuzhirong/val/val_gt/val.json","w") as f:
+#     json.dump(val_dataset.anno, f, indent=4, separators=(",", ": "), ensure_ascii=False)
+# exit(0)
 
 def visualizeCondition(image:PIL.Image, cond_dict:dict, index:int)->PIL.Image:
     image_new = image.copy()
@@ -107,32 +114,33 @@ def visualizeCondition(image:PIL.Image, cond_dict:dict, index:int)->PIL.Image:
         image_draw.text((20,70),f"angle : {angle:.3f}",(0,0,255),PIL.ImageFont.load_default(30))
     return image_new
 
-selected = [0,206,683,1041]
+selected = [206,683,1041,0]
 
-for i in tqdm(range(0, len(val_dataset))):
-    if i not in selected:
-        continue
+for i in tqdm(selected):
 
     scene = val_dataset.anno[i]
-    if scene["cmd"]==0:
-        prompt = "sharp right turn"
-    elif scene["cmd"]==1:
-        prompt = "sharp left turn"
-    elif scene["cmd"]==2:
-        prompt = "wait"
-    elif scene["cmd"]==3:
-        prompt = "go straight"
-    else:
-        raise ValueError
     
     video = [PIL.Image.open(os.path.join(val_dataset.data_root, path)).resize([720,480]) for path in scene["frames"]]
     
     # with open(os.path.join(output_folder,f"prompt_{i:05}.txt"),"w") as f:
     #     f.write(prompt+"\n")
 
-    for action_mod in range(4):
+    for action_mod in range(5):
         cond_dict = {}
         cond_name = ""
+        prompt = ""
+
+        if scene["cmd"]==0:
+            prompt = "sharp right turn"
+        elif scene["cmd"]==1:
+            prompt = "sharp left turn"
+        elif scene["cmd"]==2:
+            prompt = "wait"
+        elif scene["cmd"]==3:
+            prompt = "go straight"
+        else:
+            raise ValueError
+        
         if action_mod == 0:
             cond_name+="trajectory"
             cond_dict["trajectory"] = scene["traj"][2:]
@@ -150,10 +158,24 @@ for i in tqdm(range(0, len(val_dataset))):
                     scene["goal"][0] / 1600,
                     scene["goal"][1] / 900
                 ]
-        if cond_name=="":
-            if action_mod!=3:
-                continue
+        elif action_mod == 3:
+            # if scene["cmd"]==0:
+            #     prompt = "sharp right turn"
+            # elif scene["cmd"]==1:
+            #     prompt = "sharp left turn"
+            # elif scene["cmd"]==2:
+            #     prompt = "wait"
+            # elif scene["cmd"]==3:
+            #     prompt = "go straight"
+            # else:
+            #     raise ValueError
+            cond_name="prompt"
+        elif action_mod == 4:
+            prompt=""
             cond_name="none"
+
+        if cond_name=="":
+            continue
     
         
         # video_new = [visualizeCondition(v,cond_dict,i) for i,v in enumerate(video)]
@@ -188,7 +210,7 @@ for i in tqdm(range(0, len(val_dataset))):
 
             export_to_video(cat_video, os.path.join(output_folder, f"video_{i:05}_{cond_name}.mp4"), fps=10)
 
-        if action_mod!=3:
+        if action_mod<4:
             if action_mod==0:
                 cond_dict["trajectory"][0]*=-1
                 cond_dict["trajectory"][2]*=-1
@@ -201,6 +223,13 @@ for i in tqdm(range(0, len(val_dataset))):
                 cond_dict["angle"][3]*=-1
             elif action_mod==2:
                 cond_dict["goal"][0]=1-cond_dict["goal"][0]
+            elif action_mod==3:
+                if prompt=="sharp left turn":
+                    prompt="sharp right turn"
+                elif prompt=="sharp right turn":
+                    prompt="sharp left turn"
+                else:
+                    continue
             cond = cond_dict.__str__().replace("'","\"")
             pipeline_args = {
                 "image": video[0],

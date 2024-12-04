@@ -56,6 +56,8 @@ class NuscenesDatasetForCogvidx(Dataset):
         
         self.action_mod = 0
         self.encode_condition = Conditioner()
+
+        self.drop = 0.1
     
     def __len__(self):
         return len(self.anno)
@@ -79,27 +81,22 @@ class NuscenesDatasetForCogvidx(Dataset):
             prompt = "go straight"
         else:
             raise ValueError
-
-
+        
+        if random.random()<self.drop:
+            prompt = ""
+        
         cond_dict = {}
-        if self.action_mod == 0:
+        if random.random()>self.drop:
             cond_dict["trajectory"] = torch.tensor(scene["traj"][2:])
-        elif self.action_mod == 1:
-            # scene might be empty
-            if scene["speed"]:
+        if scene["speed"] and random.random()>self.drop:
                 cond_dict["speed"] = torch.tensor(scene["speed"][1:])
-            # scene might be empty
-            if scene["angle"]:
-                cond_dict["angle"] = torch.tensor(scene["angle"][1:]) / 780
-        elif self.action_mod == 2:
-            # point might be invalid
-            if scene["z"] > 0 and 0 < scene["goal"][0] < 1600 and 0 < scene["goal"][1] < 900:
+        if scene["angle"] and random.random()>self.drop:
+            cond_dict["angle"] = torch.tensor(scene["angle"][1:]) / 780
+        if random.random()>self.drop and scene["z"] > 0 and 0 < scene["goal"][0] < 1600 and 0 < scene["goal"][1] < 900:
                 cond_dict["goal"] = torch.tensor([
                     scene["goal"][0] / 1600,
                     scene["goal"][1] / 900
                 ])
-        else:
-            raise ValueError
         
         for k in cond_dict.keys():
             cond_dict[k] = cond_dict[k].unsqueeze(0)

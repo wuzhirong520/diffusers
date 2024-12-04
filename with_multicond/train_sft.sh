@@ -5,8 +5,8 @@ export TOKENIZERS_PARALLELISM=false
 
 export MODEL_PATH="/data/wuzhirong/hf-models/CogVideoX-2b"
 export DATASET_PATH="/data/wuzhirong/datasets/Nuscenes"
-export OUTPUT_PATH="/data/wuzhirong/ckpts/cogvideox-sft-test"
-export CUDA_VISIBLE_DEVICES=2,3
+export OUTPUT_PATH="/data/wuzhirong/ckpts/cogvideox-sft-test-1"
+export CUDA_VISIBLE_DEVICES=1,2,3
 
   # --resume_from_checkpoint "/root/autodl-tmp/cogvideox-lora-single-node_test_from2000/checkpoint-2000" \
 
@@ -25,7 +25,7 @@ accelerate launch --main_process_port 42551 --config_file accelerate_config_mach
   --validation_images "/data/wuzhirong/datasets/Nuscenes/samples/CAM_FRONT/n015-2018-07-18-11-41-49+0800__CAM_FRONT__1531885321012467.jpg" \
   --validation_prompt_separator ::: \
   --num_validation_videos 1 \
-  --validation_epochs 100 \
+  --validation_epochs 1000 \
   --seed 42 \
   --rank 128 \
   --lora_alpha 64 \
