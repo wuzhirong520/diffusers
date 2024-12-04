@@ -127,7 +127,9 @@ class CogVideoXCausalConv3d(nn.Module):
         return inputs
 
     def forward(self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None) -> torch.Tensor:
+        # print(inputs.shape)
         inputs = self.fake_context_parallel_forward(inputs, conv_cache)
+        # print(inputs.shape,self.time_kernel_size)
         conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
 
         padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
@@ -1096,6 +1098,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # It has been implemented this way so as to not have "magic values" in the code base that would be hard to explain. Note that
         # setting it to anything other than 2 would give poor results because the VAE hasn't been trained to be adaptive with different
         # number of temporal frames.
+
         self.num_latent_frames_batch_size = 2
         self.num_sample_frames_batch_size = 8
 
