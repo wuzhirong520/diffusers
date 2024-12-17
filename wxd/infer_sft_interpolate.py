@@ -104,29 +104,29 @@ imgs = [video_processor.preprocess(image, height=480, width=720).to(device="cuda
 imgs = torch.stack(imgs).permute(1,2,0,3,4) # [B, C, F, H, W]
 latent = []
 with torch.no_grad():
-    # for i in range(0, imgs.shape[2]):
-    #     x  = vae.encode(imgs[:,:,i:i+1,:,:]).latent_dist.sample()
-    #     print(x.shape)
-    #     latent.append(x)
-    # latent = torch.concatenate(latent,dim=2)
-    latent = vae.encode(imgs).latent_dist.sample()
+    for i in range(0, imgs.shape[2]):
+        x  = vae.encode(imgs[:,:,i:i+1,:,:]).latent_dist.sample()
+        print(x.shape)
+        latent.append(x)
+    latent = torch.concatenate(latent,dim=2)
+    # latent = vae.encode(imgs).latent_dist.sample()
 print(latent.shape)
 # torch.save(latent,"latent.pt")
 # latent = torch.load("latent.pt").to(device="cuda",dtype=torch.float16)
 # print(latent.shape)
 video = []
 with torch.no_grad():
-    # for i in range(0, imgs.shape[2]):
-    #     x = vae.decode(latent[:,:,i:i+1,:,:]).sample
-    #     print(x.shape)
-    #     video.append(x)
-    # video = torch.concatenate(video,dim=2)
-    video = vae.decode(latent).sample
+    for i in range(0, imgs.shape[2]):
+        x = vae.decode(latent[:,:,i:i+1,:,:]).sample
+        print(x.shape)
+        video.append(x)
+    video = torch.concatenate(video,dim=2)
+    # video = vae.decode(latent).sample
     print(video.shape)
 video = video_processor.postprocess_video(video=video, output_type="pil")[0]
 print(len(video))
 for i in range(len(video)):
-    video[i].save(f"./imgs3/{i:03d}.jpg")
+    video[i].save(f"./imgs5/{i:03d}.jpg")
 
 # image_path = "/home/user/wuzhirong/Projects/diffusers/wxd/scene/n015-2018-07-11-11-54-16+0800__CAM_FRONT__1531281643162629.jpg"
 # last_image_path = "/home/user/wuzhirong/Projects/diffusers/wxd/scene/n015-2018-07-11-11-54-16+0800__CAM_FRONT__1531281644162460.jpg"
