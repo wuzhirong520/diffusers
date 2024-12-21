@@ -104,6 +104,8 @@ class NuscenesDatasetFPS1OneByOneTrajectoryForCogvidx(Dataset):
         
         # suppose 13*2
         seek_start = random.randint(0, len(all_frames) - self.max_num_frames*2)
+        if self.encode_prompt is None and self.encode_video is None:
+            seek_start = 0
         seek_path = all_frames[seek_start: seek_start + self.max_num_frames*2]
         
         seek_path = seek_path[::2] # 2 fps -> 1 fps
@@ -194,6 +196,9 @@ class NuscenesDatasetFPS1OneByOneTrajectoryForCogvidx(Dataset):
             traj = torch.stack([traj[0::2],traj[1::2]],dim=1) # [5,2]
             trajs.append(traj)
         trajs = torch.stack(trajs).unsqueeze(0) # [1, 13, 5, 2]
+
+        if self.encode_video is None:
+            frames = seek_path
 
         return driving_prompt, frames, trajs
 

@@ -47,8 +47,8 @@ from diffusers import (
     CogVideoXDPMScheduler,
     # CogVideoXTransformer3DModel,
 )
-from diffusers.models.transformers.cogvideox_transformer_3d_wxd import CogVideoXTransformer3DModel
-from diffusers.pipelines.cogvideo.pipeline_cogvideox_image2video_inject_fbf import CogVideoXImageToVideoPipeline
+from diffusers.models.transformers.cogvideox_transformer_3d_traj import CogVideoXTransformer3DModel
+from diffusers.pipelines.cogvideo.pipeline_cogvideox_image2video_inject_fbf_traj import CogVideoXImageToVideoPipeline
 
 
 from diffusers.models.embeddings import get_3d_rotary_pos_embed
@@ -907,7 +907,7 @@ def main(args):
     transformer = CogVideoXTransformer3DModel.from_pretrained(
         # args.pretrained_model_name_or_path,
         # "/data/wangxd/ckpt/cogvideox-A4-clean-image-inject-f13-1204-fbf-inherit1022/checkpoint-1000/",
-        "/data/wangxd/ckpt/cogvideox-A4-clean-image-inject-f13-fps1-1219-fbf-noaug/checkpoint-3000/",
+        "/data/wangxd/ckpt/cogvideox-A4-clean-image-inject-f13-fps1-1219-fbf-noaug/checkpoint-5000/",
         subfolder="transformer",
         # "/root/autodl-fs/CogVidx-2b-I2V-base-transfomer",
         torch_dtype=load_dtype,
@@ -1282,6 +1282,7 @@ def main(args):
             with accelerator.accumulate(models_to_accumulate):
                 video_latents, image_latents = batch["videos"]
                 prompt_embeds = batch["prompts"]
+                trajs = batch["trajs"]
                 
                 # import pdb; pdb.set_trace()
 
@@ -1329,6 +1330,7 @@ def main(args):
                     image_rotary_emb=image_rotary_emb,
                     return_dict=False,
                     image_latent = image_latent,
+                    trajectory = trajs,
                 )[0]
                 model_pred = scheduler.get_velocity(model_output, noisy_video_latents, timesteps)
 
@@ -1423,12 +1425,90 @@ def main(args):
 
                 validation_prompts = args.validation_prompt.split(args.validation_prompt_separator)
                 validation_images = args.validation_images.split(args.validation_prompt_separator)
+                validation_trajs = torch.Tensor([[[[-2.2737e-13,  2.2737e-13],
+                                                    [ 3.9377e-02,  3.0478e+00],
+                                                    [ 1.3506e-01,  5.8453e+00],
+                                                    [ 5.2560e-01,  8.5601e+00],
+                                                    [ 1.2755e+00,  1.1166e+01]],
+
+                                                    [[ 1.1369e-13, -2.2737e-13],
+                                                    [ 2.7379e-01,  2.7296e+00],
+                                                    [ 9.1122e-01,  5.3660e+00],
+                                                    [ 1.9255e+00,  7.8668e+00],
+                                                    [ 3.3760e+00,  1.0244e+01]],
+
+                                                    [[-5.8620e-14,  0.0000e+00],
+                                                    [ 3.5779e-01,  2.6723e+00],
+                                                    [ 1.1688e+00,  5.3339e+00],
+                                                    [ 2.4927e+00,  7.8605e+00],
+                                                    [ 4.3479e+00,  1.0184e+01]],
+
+                                                    [[ 1.1369e-13,  0.0000e+00],
+                                                    [ 4.5479e-01,  2.8179e+00],
+                                                    [ 1.4783e+00,  5.6104e+00],
+                                                    [ 3.0164e+00,  8.2456e+00],
+                                                    [ 5.0429e+00,  1.0730e+01]],
+
+                                                    [[-2.2737e-13,  0.0000e+00],
+                                                    [ 4.5531e-01,  3.0171e+00],
+                                                    [ 1.4202e+00,  6.0742e+00],
+                                                    [ 2.7378e+00,  9.1553e+00],
+                                                    [ 3.9853e+00,  1.1694e+01]],
+
+                                                    [[ 2.2737e-13, -1.1369e-13],
+                                                    [ 2.3828e-01,  3.3427e+00],
+                                                    [ 5.8761e-01,  6.1501e+00],
+                                                    [ 1.1199e+00,  9.7936e+00],
+                                                    [ 1.7055e+00,  1.3576e+01]],
+
+                                                    [[ 0.0000e+00,  2.2737e-13],
+                                                    [ 7.5549e-02,  3.6807e+00],
+                                                    [ 1.8649e-01,  7.5060e+00],
+                                                    [ 3.6541e-01,  1.1554e+01],
+                                                    [ 5.7545e-01,  1.5744e+01]],
+
+                                                    [[ 0.0000e+00, -3.4106e-13],
+                                                    [ 5.9669e-02,  4.0512e+00],
+                                                    [ 1.4623e-01,  8.2464e+00],
+                                                    [ 2.4741e-01,  1.2606e+01],
+                                                    [ 3.3388e-01,  1.7088e+01]],
+
+                                                    [[ 2.2737e-13, -1.1369e-13],
+                                                    [ 2.3129e-02,  4.3609e+00],
+                                                    [ 2.9309e-02,  8.8433e+00],
+                                                    [ 1.0327e-02,  1.4479e+01],
+                                                    [-8.8081e-03,  1.9273e+01]],
+
+                                                    [[ 2.2737e-13,  1.1369e-13],
+                                                    [-9.6755e-04,  5.6360e+00],
+                                                    [-4.7851e-03,  1.0430e+01],
+                                                    [-4.9186e-02,  1.5332e+01],
+                                                    [-5.3884e-02,  2.0357e+01]],
+
+                                                    [[ 2.2737e-13, -2.2737e-13],
+                                                    [ 1.0260e-02,  4.8998e+00],
+                                                    [ 6.1606e-02,  9.9230e+00],
+                                                    [ 1.1204e-01,  1.3991e+01],
+                                                    [ 1.4284e-01,  1.8687e+01]],
+
+                                                    [[ 0.0000e+00,  0.0000e+00],
+                                                    [ 4.9743e-02,  4.0692e+00],
+                                                    [ 7.9775e-02,  8.7670e+00],
+                                                    [ 1.5748e-01,  1.4003e+01],
+                                                    [ 2.5400e-01,  1.9155e+01]],
+
+                                                    [[ 0.0000e+00,  0.0000e+00],
+                                                    [ 5.9307e-02,  5.2362e+00],
+                                                    [ 1.3773e-01,  1.0389e+01],
+                                                    [ 2.1294e-01,  1.5405e+01],
+                                                    [ 2.9330e-01,  2.1048e+01]]]])
 
                 # for validation_image, validation_prompt in zip(validation_images, validation_prompts):
                 for validation_image in validation_images:
                     for validation_prompt in validation_prompts:
                         pipeline_args = {
                             "image": load_image(validation_image),
+                            "trajectory": validation_trajs,
                             "prompt": validation_prompt,
                             "guidance_scale": args.guidance_scale,
                             "use_dynamic_cfg": args.use_dynamic_cfg,
@@ -1502,6 +1582,7 @@ def main(args):
             for validation_image, validation_prompt in zip(validation_images, validation_prompts):
                 pipeline_args = {
                     "image": load_image(validation_image),
+                    "trajectory": validation_trajs,
                     "prompt": validation_prompt,
                     "guidance_scale": args.guidance_scale,
                     "use_dynamic_cfg": args.use_dynamic_cfg,

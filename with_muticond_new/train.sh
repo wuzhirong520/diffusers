@@ -7,8 +7,8 @@ CUDA_VISIBLE_DEVICES=3 \
         --pretrained_model_name_or_path /data/wuzhirong/hf-models/CogVideoX-2b \
         --instance_data_root /data/wuzhirong/datasets/Nuscenes \
         --dataset_name nuscenes \
-        --validation_prompt "turn left. Overcast. Daytime. A curving road with black and white bollards on the sides, surrounded by greenery and a few buildings. The road, bollards, trees, and buildings. :::wait. Overcast. Daytime. A curving road with black and white bollards on the sides, surrounded by greenery and a few buildings. The road, bollards, trees, and buildings. :::turn right. Overcast. Daytime. A curving road with black and white bollards on the sides, surrounded by greenery and a few buildings. The road, bollards, trees, and buildings.:::go straight. Overcast. Daytime. A curving road with black and white bollards on the sides, surrounded by greenery and a few buildings. The road, bollards, trees, and buildings.:::slow down. Overcast. Daytime. A curving road with black and white bollards on the sides, surrounded by greenery and a few buildings. The road, bollards, trees, and buildings." \
-        --validation_images /data/wuzhirong/datasets/Nuscenes/samples/CAM_FRONT/n015-2018-07-18-11-41-49+0800__CAM_FRONT__1531885320012463.jpg \
+        --validation_prompt "Turn right, then go straight and speed up fast.. Cloudy. Daytime. An intersection with multiple lanes, traffic lights, and various vehicles. Traffic lights, vehicles (including a large truck), and the road markings. The scene then changes: Urban street with multiple lanes, buildings, and traffic lights. Traffic lights, vehicles (including a large truck), buildings. The scene then changes: Urban, with buildings on both sides of the road, a bicycle lane marked on the street, and a fire hydrant on the sidewalk. Buildings, road markings, fire hydrant." \
+        --validation_images /data/wuzhirong/datasets/Nuscenes/samples/CAM_FRONT/n008-2018-08-01-15-16-36-0400__CAM_FRONT__1533151182512404.jpg \
         --validation_prompt_separator ::: \
         --num_validation_videos 1 \
         --validation_epochs 3 \

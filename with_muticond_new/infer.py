@@ -1,6 +1,8 @@
 import os
+os.environ["CUDA_VISIBLE_DEVICES"]='3'
 import sys
 sys.path.append("../src")
+import numpy as np
 
 import torch
 from diffusers import (
@@ -8,8 +10,8 @@ from diffusers import (
     CogVideoXDPMScheduler,
 )
 
-from diffusers.models.transformers.cogvideox_transformer_3d_wxd import CogVideoXTransformer3DModel
-from diffusers.pipelines.cogvideo.pipeline_cogvideox_image2video_inject_fbf import CogVideoXImageToVideoPipeline
+from diffusers.models.transformers.cogvideox_transformer_3d_traj import CogVideoXTransformer3DModel
+from diffusers.pipelines.cogvideo.pipeline_cogvideox_image2video_inject_fbf_traj import CogVideoXImageToVideoPipeline
 
 
 from diffusers.utils import load_image, export_to_video
@@ -30,12 +32,12 @@ text_encoder = T5EncoderModel.from_pretrained(
 )
 
 transformer = CogVideoXTransformer3DModel.from_pretrained(
-        "/data/wangxd/ckpt/cogvideox-A4-clean-image-inject-f13-fps1-1219-fbf-noaug/checkpoint-3000",
+        "/data/wangxd/ckpt/cogvideox-A4-clean-image-inject-f13-fps1-1219-fbf-noaug/checkpoint-5000",
         subfolder="transformer",
         torch_dtype=torch.float16,
         revision=None,
         variant=None,
-        # in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
+        low_cpu_mem_usage=False, ignore_mismatched_sizes=True
     )
 
 vae = AutoencoderKLCogVideoX.from_pretrained(
@@ -62,10 +64,104 @@ pipe.to("cuda")
 print('Pipeline loaded!')
 
 image_path = "/data/wuzhirong/datasets/Nuscenes/samples/CAM_FRONT/n015-2018-07-11-11-54-16+0800__CAM_FRONT__1531281646662460.jpg"
+prompt = "Turn right, then go straight and speed up fast.. Cloudy. Daytime. An intersection with multiple lanes, traffic lights, and various vehicles. Traffic lights, vehicles (including a large truck), and the road markings. The scene then changes: Urban street with multiple lanes, buildings, and traffic lights. Traffic lights, vehicles (including a large truck), buildings. The scene then changes: Urban, with buildings on both sides of the road, a bicycle lane marked on the street, and a fire hydrant on the sidewalk. Buildings, road markings, fire hydrant."
+trajs = torch.Tensor([[[[-2.2737e-13,  2.2737e-13],
+          [ 3.9377e-02,  3.0478e+00],
+          [ 1.3506e-01,  5.8453e+00],
+          [ 5.2560e-01,  8.5601e+00],
+          [ 1.2755e+00,  1.1166e+01]],
+
+         [[ 1.1369e-13, -2.2737e-13],
+          [ 2.7379e-01,  2.7296e+00],
+          [ 9.1122e-01,  5.3660e+00],
+          [ 1.9255e+00,  7.8668e+00],
+          [ 3.3760e+00,  1.0244e+01]],
+
+         [[-5.8620e-14,  0.0000e+00],
+          [ 3.5779e-01,  2.6723e+00],
+          [ 1.1688e+00,  5.3339e+00],
+          [ 2.4927e+00,  7.8605e+00],
+          [ 4.3479e+00,  1.0184e+01]],
+
+         [[ 1.1369e-13,  0.0000e+00],
+          [ 4.5479e-01,  2.8179e+00],
+          [ 1.4783e+00,  5.6104e+00],
+          [ 3.0164e+00,  8.2456e+00],
+          [ 5.0429e+00,  1.0730e+01]],
+
+         [[-2.2737e-13,  0.0000e+00],
+          [ 4.5531e-01,  3.0171e+00],
+          [ 1.4202e+00,  6.0742e+00],
+          [ 2.7378e+00,  9.1553e+00],
+          [ 3.9853e+00,  1.1694e+01]],
+
+         [[ 2.2737e-13, -1.1369e-13],
+          [ 2.3828e-01,  3.3427e+00],
+          [ 5.8761e-01,  6.1501e+00],
+          [ 1.1199e+00,  9.7936e+00],
+          [ 1.7055e+00,  1.3576e+01]],
+
+         [[ 0.0000e+00,  2.2737e-13],
+          [ 7.5549e-02,  3.6807e+00],
+          [ 1.8649e-01,  7.5060e+00],
+          [ 3.6541e-01,  1.1554e+01],
+          [ 5.7545e-01,  1.5744e+01]],
+
+         [[ 0.0000e+00, -3.4106e-13],
+          [ 5.9669e-02,  4.0512e+00],
+          [ 1.4623e-01,  8.2464e+00],
+          [ 2.4741e-01,  1.2606e+01],
+          [ 3.3388e-01,  1.7088e+01]],
+
+         [[ 2.2737e-13, -1.1369e-13],
+          [ 2.3129e-02,  4.3609e+00],
+          [ 2.9309e-02,  8.8433e+00],
+          [ 1.0327e-02,  1.4479e+01],
+          [-8.8081e-03,  1.9273e+01]],
+
+         [[ 2.2737e-13,  1.1369e-13],
+          [-9.6755e-04,  5.6360e+00],
+          [-4.7851e-03,  1.0430e+01],
+          [-4.9186e-02,  1.5332e+01],
+          [-5.3884e-02,  2.0357e+01]],
+
+         [[ 2.2737e-13, -2.2737e-13],
+          [ 1.0260e-02,  4.8998e+00],
+          [ 6.1606e-02,  9.9230e+00],
+          [ 1.1204e-01,  1.3991e+01],
+          [ 1.4284e-01,  1.8687e+01]],
+
+         [[ 0.0000e+00,  0.0000e+00],
+          [ 4.9743e-02,  4.0692e+00],
+          [ 7.9775e-02,  8.7670e+00],
+          [ 1.5748e-01,  1.4003e+01],
+          [ 2.5400e-01,  1.9155e+01]],
+
+         [[ 0.0000e+00,  0.0000e+00],
+          [ 5.9307e-02,  5.2362e+00],
+          [ 1.3773e-01,  1.0389e+01],
+          [ 2.1294e-01,  1.5405e+01],
+          [ 2.9330e-01,  2.1048e+01]]]])
+
+from nuscenes_dataset_for_cogvidx import NuscenesDatasetFPS1OneByOneTrajectoryForCogvidx
+val_dataset = NuscenesDatasetFPS1OneByOneTrajectoryForCogvidx(split="val")
+
+item = val_dataset[13]
+prompt, frames , trajs = item["instance_prompt"], item["instance_video"], item["trajectory"]
+
+# print(prompt)
+frames_ = [load_image(os.path.join(val_dataset.data_root, f)) for f in frames]
+export_to_video(frames_, "./infer_results/x_gt.mp4")
+# exit(0)
+
+print(prompt)
+print(frames[0])
+print(trajs)
 
 pipeline_args = {
-    "image": load_image(image_path),
-    "prompt": "turn left",
+    "image": load_image(os.path.join(val_dataset.data_root, frames[0])),
+    "prompt": prompt,
+    "trajectory": trajs, 
     "guidance_scale": 6,
     "use_dynamic_cfg": True,
     "height": 480,
@@ -75,9 +171,9 @@ pipeline_args = {
 }
 frames = pipe(**pipeline_args).frames[0]
 print(len(frames))
-for i in range(len(frames)):
-    frames[i].save(f"./infer_results/206/{i:03d}.jpg")
-export_to_video(frames, "./infer_results/206.mp4")
+# for i in range(len(frames)):
+#     frames[i].save(f"./infer_results/x/{i:03d}.jpg")
+export_to_video(frames, "./infer_results/x.mp4")
 
 # while True:
 #     image_dir = input("image dir: ")
