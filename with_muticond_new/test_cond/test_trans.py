@@ -25,11 +25,11 @@ from diffusers.utils import export_to_video
 from nuscenes_dataset import NuscenesDatasetForCogvidx
 val_dataset = NuscenesDatasetForCogvidx("/data/wuzhirong/datasets/Nuscenes",split="val")
 
-selected = [197, 206]
+selected = [197, 206, 1041]
 
 for i in tqdm(selected):
     scene = val_dataset.anno[i]
-    video = [Image.open(os.path.join(val_dataset.data_root, path)).resize([720,480]) for path in scene["frames"][::6]]
+    video = [Image.open(os.path.join(val_dataset.data_root, path)).resize([720,480]) for path in scene["frames"]]
     print(len(video))
     trajectory_points_x = scene["traj"][2::2]
     trajectory_points_y = scene["traj"][3::2]
@@ -48,9 +48,12 @@ for i in tqdm(selected):
     raw_video = [visualizeCondition(v, trajectory_points) for i,v in enumerate(video)]
     # export_to_video(raw_video, os.path.join("./", f"raw_video_{i:05}.mp4"), fps=8)
     
-    from traj_utils_torch import get_trajectory_image_pil
+    from traj_utils_torch import get_trajectory_image_pil, interpolate_trajectory
     trajectory_points = np.array(trajectory_points)
     print(trajectory_points.shape)
+    new_trajectory_points = interpolate_trajectory(trajectory_points, 25)
+    print(new_trajectory_points.shape)
+    trajectory_points = new_trajectory_points
     trajectory_points = np.concatenate([trajectory_points[:,0:1], np.zeros_like(trajectory_points[:,0:1]) , trajectory_points[:,1:]], axis=1)
     print(trajectory_points.shape)
     new_video = get_trajectory_image_pil(video[0], torch.Tensor(trajectory_points))
@@ -62,4 +65,4 @@ for i in tqdm(selected):
     new_video_tensor = torch.stack([torchvision.transforms.ToTensor()(v) for v in new_video])
     cat_video_tensor = torch.cat([raw_video_tensor,new_video_tensor],dim=3)
     cat_video = [torchvision.transforms.ToPILImage()(cat_video_tensor[index]) for index in range(cat_video_tensor.shape[0])]
-    export_to_video(cat_video, os.path.join("./", f"cat_video_{i:05}_image.mp4"), fps=8)
+    export_to_video(cat_video, os.path.join("./", f"cat_video_{i:05}_image_interpolate.mp4"), fps=10)

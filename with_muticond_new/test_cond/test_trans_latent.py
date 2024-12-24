@@ -82,7 +82,7 @@ for i in tqdm(selected):
         trajectory_points = torch.cat([trajectory_points[:,0:1], torch.zeros_like(trajectory_points[:,0:1]) , trajectory_points[:,1:]], dim=1)
         print(trajectory_points.shape)
         new_latents = latents[0,:,0].permute(1,2,0)
-        new_latents, new_latents_mask = get_trajectory_latent(new_latents, trajectory_points)
+        new_latents, new_latents_mask = get_trajectory_latent(new_latents, trajectory_points, "nearest")
         new_latents = new_latents.permute(3,0,1,2).unsqueeze(0)
         # latents += new_latents
         # latents[:,:,new_latents_mask] /= 2
@@ -101,4 +101,4 @@ for i in tqdm(selected):
     new_video_tensor = torch.stack([torchvision.transforms.ToTensor()(v) for v in new_video])
     cat_video_tensor = torch.cat([raw_video_tensor,new_video_tensor],dim=3)
     cat_video = [torchvision.transforms.ToPILImage()(cat_video_tensor[index]) for index in range(cat_video_tensor.shape[0])]
-    export_to_video(cat_video, os.path.join("./", f"cat_video_{i:05}_no_fill.mp4"), fps=8)
+    export_to_video(cat_video, os.path.join("./", f"cat_video_{i:05}.mp4"), fps=8)
