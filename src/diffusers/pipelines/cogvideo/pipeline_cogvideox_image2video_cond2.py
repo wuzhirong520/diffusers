@@ -23,7 +23,8 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
-from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
+from ...models import AutoencoderKLCogVideoX
+from ...models.transformers.cogvideox_transformer_3d_traj_2 import CogVideoXTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
@@ -379,16 +380,15 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         image_latents = torch.cat(image_latents, dim=0).to(dtype).permute(0, 2, 1, 3, 4)  # [B, F, C, H, W]
         image_latents = self.vae_scaling_factor_image * image_latents
 
-        if image_latents.shape[1]<num_frames:
-            padding_shape = (
-                batch_size,
-                num_frames - image_latents.shape[1],
-                num_channels_latents,
-                height // self.vae_scale_factor_spatial,
-                width // self.vae_scale_factor_spatial,
-            )
-            latent_padding = torch.zeros(padding_shape, device=device, dtype=dtype)
-            image_latents = torch.cat([image_latents, latent_padding], dim=1)
+        padding_shape = (
+            batch_size,
+            num_frames - 1,
+            num_channels_latents,
+            height // self.vae_scale_factor_spatial,
+            width // self.vae_scale_factor_spatial,
+        )
+        latent_padding = torch.zeros(padding_shape, device=device, dtype=dtype)
+        image_latents = torch.cat([image_latents, latent_padding], dim=1)
 
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -710,6 +710,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
             max_sequence_length=max_sequence_length,
             device=device,
         )
+
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
@@ -719,16 +720,20 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
 
         # 5. Prepare latents
         if trajectory is not None: # [N,2]
-            from traj_utils_torch import get_trajectory_image_pil, interpolate_trajectory
+            from .traj_utils_torch import get_trajectory_image_pil, interpolate_trajectory
             trajectory = interpolate_trajectory(trajectory, 25) # [25,2]
             trajectory = np.concatenate([trajectory[:,0:1], np.zeros_like(trajectory[:,0:1]) , trajectory[:,1:]], axis=1) #[25,3]
-            traj_frames = get_trajectory_image_pil(image.resize([width, height]), torch.Tensor(trajectory))  
+            trajectory = torch.Tensor(trajectory).to(device)
+            traj_frames = get_trajectory_image_pil(image.resize([width, height]), trajectory , device=device)  
             warp_images = self.video_processor.preprocess(traj_frames, height=height, width=width).to(
                 device, dtype=prompt_embeds.dtype
             ) #[F,C,H,W]
-            warp_images = warp_images.unsqueeze(0).permute(0,2,1,3,4)
+            warp_images = warp_images.unsqueeze(0).permute(0,2,1,3,4) #[B,C,F,H,W]
             warp_image_latents = self.vae.encode(warp_images).latent_dist.sample()
+            warp_image_latents = warp_image_latents.permute(0,2,1,3,4) #[B,F,C,H,W]
             warp_image_latents = torch.cat([warp_image_latents] * 2) if do_classifier_free_guidance else warp_image_latents
+        else:
+            warp_image_latents = None
 
         image = self.video_processor.preprocess(image, height=height, width=width).to(
             device, dtype=prompt_embeds.dtype

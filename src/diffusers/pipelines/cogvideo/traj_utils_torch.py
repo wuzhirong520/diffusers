@@ -175,7 +175,7 @@ def get_trajectory_latent(image : torch.Tensor, trajectory_points : torch.Tensor
     return new_images, new_image_masks
     
 
-def get_trajectory_image_pil(image : Image, trajectory_points : torch.Tensor, is_interplote_image="cv2"):
-    image_tensor = torch.Tensor(np.array(image))
+def get_trajectory_image_pil(image : Image, trajectory_points : torch.Tensor, device="cpu", is_interplote_image="cv2"):
+    image_tensor = torch.Tensor(np.array(image)).to(device)
     trajectory_images, _ = get_trajectory_latent(image_tensor, trajectory_points, is_interplote_image)
     return [Image.fromarray(trajectory_images[i].cpu().numpy().astype(np.uint8)) for i in range(trajectory_images.shape[0])]

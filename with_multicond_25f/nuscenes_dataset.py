@@ -44,12 +44,7 @@ class NuscenesDatasetForCogvidx(Dataset):
         self.encode_video=encode_video
         self.encode_prompt=encode_prompt
 
-        if self.split == "train":
-            anno_path = os.path.join(data_root, "vista_anno/nuScenes.json")
-        elif self.split == "val":
-            anno_path = os.path.join(data_root, "vista_anno/nuScenes_val.json")
-        else:
-            raise ValueError
+        anno_path = os.path.join(data_root, f"vista_anno/nuScenes_{self.split}.json")
         
         with open(anno_path, 'r') as f:
             self.anno = json.load(f)

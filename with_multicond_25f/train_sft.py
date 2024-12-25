@@ -45,7 +45,7 @@ from diffusers import (
     AutoencoderKLCogVideoX,
     CogVideoXDPMScheduler,
     # CogVideoXImageToVideoPipeline,
-    CogVideoXTransformer3DModel,
+    # CogVideoXTransformer3DModel,
 )
 from diffusers.models.embeddings import get_3d_rotary_pos_embed
 from diffusers.optimization import get_scheduler
@@ -67,7 +67,8 @@ import numpy as np
 from diffusers.image_processor import VaeImageProcessor
 
 # from nuscenes_dataset_for_cogvidx import NuscenesDatasetAllframesForCogvidx
-from diffusers.pipelines.cogvideo.pipeline_cogvideox_image2video_cond import CogVideoXImageToVideoPipeline
+from diffusers.pipelines.cogvideo.pipeline_cogvideox_image2video_cond2 import CogVideoXImageToVideoPipeline
+from diffusers.models.transformers.cogvideox_transformer_3d_traj_2 import CogVideoXTransformer3DModel
 
 if is_wandb_available():
     import wandb
@@ -586,7 +587,7 @@ def log_validation(
             video_filenames = []
             for i, video in enumerate(videos):
                 prompt = (
-                    (pipeline_args["prompt"][:25]+pipeline_args["cond"][:10])
+                    (pipeline_args["prompt"][:25])
                     .replace(" ", "_")
                     .replace(" ", "_")
                     .replace("'", "_")
@@ -605,7 +606,7 @@ def log_validation(
             tracker.log(
                 {
                     phase_name: [
-                        wandb.Video(filename, caption=f"{i}: {pipeline_args['prompt']+pipeline_args['cond']}")
+                        wandb.Video(filename, caption=f"{i}: {pipeline_args['prompt']}")
                         for i, filename in enumerate(video_filenames)
                     ]
                 }
@@ -907,12 +908,22 @@ def main(args):
     load_dtype = torch.bfloat16 if "5b" in args.pretrained_model_name_or_path.lower() else torch.float16
     transformer = CogVideoXTransformer3DModel.from_pretrained(
         args.pretrained_model_name_or_path,
-        subfolder="transformer"
+        subfolder="transformer",
         torch_dtype=load_dtype,
         revision=args.revision,
         variant=args.variant,
         in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
     )
+    from safetensors import safe_open
+    tensors = {}
+    with safe_open(os.path.join(args.pretrained_model_name_or_path, "transformer/diffusion_pytorch_model.safetensors"), framework="pt", device='cpu') as f:
+        for k in f.keys():
+            if "patch_embed.proj" in k:
+                nk = k.replace("proj", "origin_proj")
+                tensors[nk] = f.get_tensor(k)
+                print(k)
+
+    transformer.load_state_dict(tensors, strict=False)
     
     scheduler = CogVideoXDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler",)
 
@@ -1309,6 +1320,7 @@ def main(args):
                     timestep=timesteps,
                     image_rotary_emb=image_rotary_emb,
                     return_dict=False,
+                    warp_image_latents=traj_video_latents,
                 )[0]
                 model_pred = scheduler.get_velocity(model_output, noisy_video_latents, timesteps)
 

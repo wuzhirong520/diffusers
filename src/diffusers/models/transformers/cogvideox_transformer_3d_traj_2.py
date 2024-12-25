@@ -121,7 +121,7 @@ class CogVideoXBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        image_latent: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        warp_image_latents: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.size(1)
 
@@ -245,9 +245,13 @@ class CogVideoXBlockInject(nn.Module):
         )
 
         # Inject condition to hidden states
-        self.image_gamma = zero_module(nn.Conv2d(in_channels=dim, out_channels=dim, kernel_size=3, stride=1, padding=1))
-        self.image_beta = zero_module(nn.Conv2d(in_channels=dim, out_channels=dim, kernel_size=3, stride=1, padding=1))
-        self.image_norm = nn.LayerNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        # self.image_gamma = zero_module(nn.Conv2d(in_channels=dim, out_channels=dim, kernel_size=3, stride=1, padding=1))
+        # self.image_beta = zero_module(nn.Conv2d(in_channels=dim, out_channels=dim, kernel_size=3, stride=1, padding=1))
+        # self.image_norm = nn.LayerNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        self.warp_gamma = zero_module(nn.Conv1d(in_channels=9450, out_channels=9450, kernel_size=1))
+        self.warp_beta = zero_module(nn.Conv1d(in_channels=9450, out_channels=9450, kernel_size=1))
+        self.warp_norm = nn.LayerNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        # print(dim)
     
     def apply_norm(self, norm, x):
         if len(x.size()) == 4:
@@ -269,14 +273,16 @@ class CogVideoXBlockInject(nn.Module):
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.size(1)
 
+        # norm & modulate
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
-            hidden_states + warp_image_latents, encoder_hidden_states, temb
+            hidden_states, encoder_hidden_states, temb
         )
 
-        # # norm & modulate
-        # norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
-        #     hidden_states, encoder_hidden_states, temb
-        # )
+        if warp_image_latents is not None:
+            # norm_hidden_states = norm_hidden_states + warp_image_latents
+            warp_gamma = self.warp_gamma(warp_image_latents)
+            warp_beta = self.warp_beta(warp_image_latents)
+            norm_hidden_states = norm_hidden_states + self.warp_norm(norm_hidden_states)* warp_gamma + warp_beta
         
         # if image_latent is not None:
         #     # import pdb; pdb.set_trace()
@@ -630,8 +636,11 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         hidden_states = hidden_states[:, text_seq_length:]
         
         if warp_image_latents is not None:
-            warp_image_latents = self.patch_embed.origin_proj(warp_image_latents) # NOTE in_channels, origin_proj
-        
+            warp_image_latents = warp_image_latents.reshape(-1, *warp_image_latents.shape[2:])
+            warp_image_latents = self.patch_embed.origin_proj(warp_image_latents) 
+            warp_image_latents = warp_image_latents.reshape(batch_size, num_frames, *warp_image_latents.shape[1:])
+            warp_image_latents = rearrange(warp_image_latents, "b n c h w -> b (n h w) c")
+
         # 3. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
