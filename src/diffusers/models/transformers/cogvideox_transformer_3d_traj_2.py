@@ -248,9 +248,10 @@ class CogVideoXBlockInject(nn.Module):
         # self.image_gamma = zero_module(nn.Conv2d(in_channels=dim, out_channels=dim, kernel_size=3, stride=1, padding=1))
         # self.image_beta = zero_module(nn.Conv2d(in_channels=dim, out_channels=dim, kernel_size=3, stride=1, padding=1))
         # self.image_norm = nn.LayerNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
-        self.warp_gamma = zero_module(nn.Conv1d(in_channels=9450, out_channels=9450, kernel_size=1))
-        self.warp_beta = zero_module(nn.Conv1d(in_channels=9450, out_channels=9450, kernel_size=1))
-        self.warp_norm = nn.LayerNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        
+        # self.warp_gamma = zero_module(nn.Conv1d(in_channels=9450, out_channels=9450, kernel_size=1))
+        # self.warp_beta = zero_module(nn.Conv1d(in_channels=9450, out_channels=9450, kernel_size=1))
+        # self.warp_norm = nn.LayerNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
         # print(dim)
     
     def apply_norm(self, norm, x):
@@ -279,10 +280,10 @@ class CogVideoXBlockInject(nn.Module):
         )
 
         if warp_image_latents is not None:
-            # norm_hidden_states = norm_hidden_states + warp_image_latents
-            warp_gamma = self.warp_gamma(warp_image_latents)
-            warp_beta = self.warp_beta(warp_image_latents)
-            norm_hidden_states = norm_hidden_states + self.warp_norm(norm_hidden_states)* warp_gamma + warp_beta
+            norm_hidden_states = norm_hidden_states + warp_image_latents
+            # warp_gamma = self.warp_gamma(warp_image_latents)
+            # warp_beta = self.warp_beta(warp_image_latents)
+            # norm_hidden_states = norm_hidden_states + self.warp_norm(norm_hidden_states)* warp_gamma + warp_beta
         
         # if image_latent is not None:
         #     # import pdb; pdb.set_trace()

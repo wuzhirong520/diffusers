@@ -8,9 +8,12 @@ from diffusers import (
     AutoencoderKLCogVideoX,
     CogVideoXDPMScheduler,
     # CogVideoXImageToVideoPipeline,
-    CogVideoXTransformer3DModel,
+    # CogVideoXTransformer3DModel,
 )
+
 from diffusers.pipelines.cogvideo.pipeline_cogvideox_image2video_cond2 import CogVideoXImageToVideoPipeline
+from diffusers.models.transformers.cogvideox_transformer_3d_traj_2 import CogVideoXTransformer3DModel
+
 from diffusers.utils import load_image, export_to_video
 from transformers import AutoTokenizer, T5EncoderModel, T5Tokenizer
 
@@ -101,7 +104,7 @@ pipeline_args = {
     "height": 480,
     "width": 720,
     "num_frames": 25,
-    "num_inference_steps": 2,
+    "num_inference_steps": 50,
 }
 frames = pipe(**pipeline_args).frames[0]
 

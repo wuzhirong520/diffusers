@@ -907,23 +907,25 @@ def main(args):
     # CogVideoX-5b and CogVideoX-5b-I2V weights are stored in bfloat16
     load_dtype = torch.bfloat16 if "5b" in args.pretrained_model_name_or_path.lower() else torch.float16
     transformer = CogVideoXTransformer3DModel.from_pretrained(
-        args.pretrained_model_name_or_path,
+        # args.pretrained_model_name_or_path,
+        # "/data/wuzhirong/ckpts/cogvideox-D4-clean-image-sft-1022",
+        "/data/wuzhirong/ckpts/cogvideox-25f-traj/checkpoint-7800",
         subfolder="transformer",
         torch_dtype=load_dtype,
         revision=args.revision,
         variant=args.variant,
         in_channels=32, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
     )
-    from safetensors import safe_open
-    tensors = {}
-    with safe_open(os.path.join(args.pretrained_model_name_or_path, "transformer/diffusion_pytorch_model.safetensors"), framework="pt", device='cpu') as f:
-        for k in f.keys():
-            if "patch_embed.proj" in k:
-                nk = k.replace("proj", "origin_proj")
-                tensors[nk] = f.get_tensor(k)
-                print(k)
+    # from safetensors import safe_open
+    # tensors = {}
+    # with safe_open(os.path.join(args.pretrained_model_name_or_path, "transformer/diffusion_pytorch_model.safetensors"), framework="pt", device='cpu') as f:
+    #     for k in f.keys():
+    #         if "patch_embed.proj" in k:
+    #             nk = k.replace("proj", "origin_proj")
+    #             tensors[nk] = f.get_tensor(k)
+    #             print(k)
 
-    transformer.load_state_dict(tensors, strict=False)
+    # transformer.load_state_dict(tensors, strict=False)
     
     scheduler = CogVideoXDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler",)
 
